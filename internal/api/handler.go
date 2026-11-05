@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -28,7 +29,8 @@ func NewHandler(apiStore *Store) *Handler {
 }
 
 func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, request *http.Request) {
-	//TODO::Require user login with write permissions
+	// TODO::Require user login with write permissions
+	// TODO::Check if user already exists
 	var body insertSteamUserRequest
 	request.Body = http.MaxBytesReader(responseWriter, request.Body, 1<<10)
 	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
@@ -58,6 +60,18 @@ func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, requ
 		return
 	}
 
+	//TODO::Parse apps and things
+	userApps, err := handler.steamClient.GetOwnedGames(steamID)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	err = handler.addApps(userApps)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
 	steamUser, err := handler.apiStore.queries.CreateSteamUser(request.Context(), dbgen.CreateSteamUserParams{
 		SteamID: steamID,
 		Name:    vanityUrl,
@@ -67,6 +81,62 @@ func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, requ
 		return
 	}
 	httpx.RespondWithJSON(responseWriter, http.StatusCreated, steamUser)
+}
+
+func (handler *Handler) addApps(request *http.Request, apps steamapi.OwnedGamesResponse) error {
+	for _, app := range apps.Response.Games {
+		//TODO::Check database for existing app and last time it was updated.  Update only if necessary.
+
+		// Add App to the database
+		// TODO::ADD APP TO DATABASE
+		steamApp, err := handler.steamClient.GetAppDetail(app.AppID)
+		if err != nil {
+			return err
+		}
+		//Add categories and genres to the database
+		err = handler.addAppCategories(request, steamApp.Data.Categories, app.AppID)
+		if err != nil {
+			return err
+		}
+		err = handler.addAppGenres(request, steamApp.Data.Genres)
+		if err != nil {
+			return err
+		}
+
+	}
+	return nil
+}
+
+func (handler *Handler) addAppCategories(request *http.Request, categories []steamapi.Category, appId int) error {
+	for _, category := range categories {
+		//Insert category into the database
+		_, err := handler.apiStore.queries.UpsertCategory(request.Context(), dbgen.UpsertCategoryParams{
+			ID: int32(category.ID),
+			Description: sql.NullString{
+				String: category.Description,
+				Valid:  true,
+			},
+		})
+		if err != nil {
+			return err
+		}
+		//Add category to the app
+		err = handler.apiStore.queries.AddAppCategory(request.Context(), dbgen.AddAppCategoryParams{
+			CategoryID: int32(category.ID),
+			AppID:      int32(appId),
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (handler *Handler) addAppGenres(request *http.Request, genres []steamapi.Genre) error {
+	for _, genre := range genres {
+		//Insert genre into the database
+	}
+	return nil
 }
 
 func (handler *Handler) GetSteamUserById(responseWriter http.ResponseWriter, request *http.Request) {

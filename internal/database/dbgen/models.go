@@ -4,8 +4,57 @@
 
 package dbgen
 
+import (
+	"database/sql"
+)
+
+type App struct {
+	SteamAppid           int32          `json:"steam_appid"`
+	Name                 sql.NullString `json:"name"`
+	DetailedDescription  sql.NullString `json:"detailed_description"`
+	AboutTheGame         sql.NullString `json:"about_the_game"`
+	ShortDescription     sql.NullString `json:"short_description"`
+	HeaderImage          sql.NullString `json:"header_image"`
+	Website              sql.NullString `json:"website"`
+	PriceCurrency        sql.NullString `json:"price_currency"`
+	PriceInitial         sql.NullInt32  `json:"price_initial"`
+	PriceFinal           sql.NullInt32  `json:"price_final"`
+	PriceDiscountPercent sql.NullInt32  `json:"price_discount_percent"`
+	PriceFinalFormatted  sql.NullString `json:"price_final_formatted"`
+	PlatformWindows      sql.NullBool   `json:"platform_windows"`
+	PlatformMac          sql.NullBool   `json:"platform_mac"`
+	PlatformLinux        sql.NullBool   `json:"platform_linux"`
+	ReleaseDate          sql.NullString `json:"release_date"`
+	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
+}
+
+type AppCategory struct {
+	AppID      int32 `json:"app_id"`
+	CategoryID int32 `json:"category_id"`
+}
+
+type AppGenre struct {
+	AppID   int32 `json:"app_id"`
+	GenreID int32 `json:"genre_id"`
+}
+
+type Category struct {
+	ID          int32          `json:"id"`
+	Description sql.NullString `json:"description"`
+}
+
+type Genre struct {
+	ID          int32          `json:"id"`
+	Description sql.NullString `json:"description"`
+}
+
 type SteamUser struct {
 	ID      int32  `json:"id"`
 	SteamID int64  `json:"steam_id"`
 	Name    string `json:"name"`
+}
+
+type SteamUserApp struct {
+	SteamID int64 `json:"steam_id"`
+	AppID   int32 `json:"app_id"`
 }
