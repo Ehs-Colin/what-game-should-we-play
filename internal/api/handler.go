@@ -96,7 +96,7 @@ func (handler *Handler) addApps(request *http.Request, apps steamapi.OwnedGamesR
 	for _, app := range apps.Response.Games {
 		//TODO::Check database for existing app and last time it was updated.  Update only if necessary.
 		appID := app.AppID
-		steamApp, err := handler.apiStore.steamClient.GetAppDetail(appID)
+		steamApp, err := handler.apiStore.steamClient.GetAppDetail(request.Context(), appID)
 		if errors.Is(err, steamapi.ErrAppNotFound) {
 			log.Printf("Skipping app %d: missing or removed from Steam", appID)
 			continue
