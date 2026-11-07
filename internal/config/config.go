@@ -22,8 +22,8 @@ const (
 	defaultAppOrigin             = "http://localhost:5959"
 	activeEncryptionVersionEnv   = "DATA_ENCRYPTION_ACTIVE_VERSION"
 	encryptionKeyEnvPrefix       = "DATA_ENCRYPTION_KEY_"
-	defaultSteamApiTimeout       = 5 * time.Second
-	defaultSteamApiCacheInterval = time.Minute * 5
+	defaultSteamApiTimeout       = 5
+	defaultSteamApiCacheInterval = 5
 )
 
 type Config struct {

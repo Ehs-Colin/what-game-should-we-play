@@ -60,3 +60,19 @@ func (q *Queries) UpdateSteamUser(ctx context.Context, arg UpdateSteamUserParams
 	err := row.Scan(&i.ID, &i.SteamID, &i.Name)
 	return i, err
 }
+
+const upsertSteamUser = `-- name: UpsertSteamUser :one
+INSERT INTO steam_users (steam_id, name) VALUES ($1, $2) ON CONFLICT (steam_id) DO UPDATE SET name = $2 RETURNING id, steam_id, name
+`
+
+type UpsertSteamUserParams struct {
+	SteamID int64  `json:"steam_id"`
+	Name    string `json:"name"`
+}
+
+func (q *Queries) UpsertSteamUser(ctx context.Context, arg UpsertSteamUserParams) (SteamUser, error) {
+	row := q.db.QueryRowContext(ctx, upsertSteamUser, arg.SteamID, arg.Name)
+	var i SteamUser
+	err := row.Scan(&i.ID, &i.SteamID, &i.Name)
+	return i, err
+}

@@ -28,6 +28,11 @@ type App struct {
 	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
 }
 
+type AppAlias struct {
+	AppID   int32 `json:"app_id"`
+	AliasID int32 `json:"alias_id"`
+}
+
 type AppCategory struct {
 	AppID      int32 `json:"app_id"`
 	CategoryID int32 `json:"category_id"`
