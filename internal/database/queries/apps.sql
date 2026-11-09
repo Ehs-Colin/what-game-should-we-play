@@ -22,7 +22,9 @@ INSERT INTO apps (
     platform_mac,
     platform_linux,
     release_date,
-    release_coming_soon
+    release_coming_soon,
+    updated_at,
+    created_at
 ) VALUES (
     $1,
     $2,
@@ -40,7 +42,9 @@ INSERT INTO apps (
     $14,
     $15,
     $16,
-    $17
+    $17,
+    NOW(),
+    NOW()
 ) RETURNING *;
 
 -- name: UpdateApp :one
@@ -60,7 +64,9 @@ UPDATE apps SET
     platform_mac = $14,
     platform_linux = $15,
     release_date = $16,
-    release_coming_soon = $17
+    release_coming_soon = $17,
+    updated_at = NOW(),
+    created_at = NOW()
 WHERE steam_appid = $1
 RETURNING *;
 
@@ -82,7 +88,9 @@ INSERT INTO apps (
     platform_mac,
     platform_linux,
     release_date,
-    release_coming_soon
+    release_coming_soon,
+    updated_at,
+    created_at
 ) VALUES (
     $1,
     $2,
@@ -100,7 +108,9 @@ INSERT INTO apps (
     $14,
     $15,
     $16,
-    $17
+    $17,
+    NOW(),
+    NOW()
 )
 ON CONFLICT (steam_appid) DO UPDATE SET
     name = EXCLUDED.name,
@@ -118,7 +128,9 @@ ON CONFLICT (steam_appid) DO UPDATE SET
     platform_mac = EXCLUDED.platform_mac,
     platform_linux = EXCLUDED.platform_linux,
     release_date = EXCLUDED.release_date,
-    release_coming_soon = EXCLUDED.release_coming_soon
+    release_coming_soon = EXCLUDED.release_coming_soon,
+    updated_at = NOW(),
+    created_at = NOW()
 RETURNING *;
 
 -- name: DeleteApp :exec

@@ -6,6 +6,7 @@ package dbgen
 
 import (
 	"database/sql"
+	"time"
 )
 
 type App struct {
@@ -26,40 +27,56 @@ type App struct {
 	PlatformLinux        sql.NullBool   `json:"platform_linux"`
 	ReleaseDate          sql.NullString `json:"release_date"`
 	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
 }
 
 type AppAlias struct {
-	AppID   int32 `json:"app_id"`
-	AliasID int32 `json:"alias_id"`
+	AppID     int32     `json:"app_id"`
+	AliasID   int32     `json:"alias_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type AppCategory struct {
-	AppID      int32 `json:"app_id"`
-	CategoryID int32 `json:"category_id"`
+	AppID      int32     `json:"app_id"`
+	CategoryID int32     `json:"category_id"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type AppGenre struct {
-	AppID   int32 `json:"app_id"`
-	GenreID int32 `json:"genre_id"`
+	AppID     int32     `json:"app_id"`
+	GenreID   int32     `json:"genre_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Category struct {
 	ID          int32          `json:"id"`
 	Description sql.NullString `json:"description"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 type Genre struct {
 	ID          int32          `json:"id"`
 	Description sql.NullString `json:"description"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 type SteamUser struct {
-	ID      int32  `json:"id"`
-	SteamID int64  `json:"steam_id"`
-	Name    string `json:"name"`
+	ID        int32     `json:"id"`
+	SteamID   int64     `json:"steam_id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type SteamUserApp struct {
-	SteamID int64 `json:"steam_id"`
-	AppID   int32 `json:"app_id"`
+	SteamID   int64     `json:"steam_id"`
+	AppID     int32     `json:"app_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

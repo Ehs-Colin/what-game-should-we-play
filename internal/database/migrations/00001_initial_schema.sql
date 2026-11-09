@@ -2,7 +2,9 @@
 CREATE TABLE steam_users (
 	id INTEGER PRIMARY KEY,
 	steam_id BIGINT UNIQUE NOT NULL,
-	name VARCHAR(255) NOT NULL
+	name VARCHAR(255) NOT NULL,
+	created_at TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE apps (
@@ -22,17 +24,23 @@ CREATE TABLE apps (
     platform_mac BOOLEAN,
     platform_linux BOOLEAN,
     release_date VARCHAR(255),
-    release_coming_soon BOOLEAN
+    release_coming_soon BOOLEAN,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE categories (
     id INT PRIMARY KEY,
-    description VARCHAR(255)
+    description VARCHAR(255),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE app_categories (
     app_id INT,
     category_id INT,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
     PRIMARY KEY (app_id, category_id),
     FOREIGN KEY (app_id) REFERENCES apps(steam_appid),
     FOREIGN KEY (category_id) REFERENCES categories(id)
@@ -40,12 +48,16 @@ CREATE TABLE app_categories (
 
 CREATE TABLE genres (
     id INT PRIMARY KEY,
-    description VARCHAR(255)
+    description VARCHAR(255),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE app_genres (
     app_id INT,
     genre_id INT,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
     PRIMARY KEY (app_id, genre_id),
     FOREIGN KEY (app_id) REFERENCES apps(steam_appid),
     FOREIGN KEY (genre_id) REFERENCES genres(id)
@@ -54,6 +66,8 @@ CREATE TABLE app_genres (
 CREATE TABLE steam_user_apps (
     steam_id BIGINT,
     app_id INT,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
     PRIMARY KEY (steam_id, app_id),
     FOREIGN KEY (steam_id) REFERENCES steam_users(steam_id),
     FOREIGN KEY (app_id) REFERENCES apps(steam_appid)
@@ -62,6 +76,8 @@ CREATE TABLE steam_user_apps (
 CREATE TABLE app_alias (
     app_id INT NOT NULL,
     alias_id INT PRIMARY KEY NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
     FOREIGN KEY (app_id) REFERENCES apps(steam_appid)
 );
 

@@ -10,7 +10,17 @@ import (
 )
 
 const addSteamUserApp = `-- name: AddSteamUserApp :exec
-INSERT INTO steam_user_apps (steam_id, app_id) VALUES ($1, $2)
+INSERT INTO steam_user_apps (
+    steam_id,
+    app_id,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
 ON CONFLICT DO NOTHING
 `
 
@@ -34,7 +44,7 @@ func (q *Queries) ClearSteamUserApps(ctx context.Context, steamID int64) error {
 }
 
 const listAppsForSteamUser = `-- name: ListAppsForSteamUser :many
-SELECT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon FROM apps a
+SELECT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN steam_user_apps sua ON sua.app_id = a.steam_appid
 WHERE sua.steam_id = $1
 ORDER BY a.name
@@ -67,6 +77,8 @@ func (q *Queries) ListAppsForSteamUser(ctx context.Context, steamID int64) ([]Ap
 			&i.PlatformLinux,
 			&i.ReleaseDate,
 			&i.ReleaseComingSoon,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -28,18 +28,23 @@ func (q *Queries) DeleteAppAlias(ctx context.Context, aliasID int32) error {
 }
 
 const getAppAlias = `-- name: GetAppAlias :one
-SELECT app_id, alias_id FROM app_alias WHERE alias_id = $1 LIMIT 1
+SELECT app_id, alias_id, created_at, updated_at FROM app_alias WHERE alias_id = $1 LIMIT 1
 `
 
 func (q *Queries) GetAppAlias(ctx context.Context, aliasID int32) (AppAlias, error) {
 	row := q.db.QueryRowContext(ctx, getAppAlias, aliasID)
 	var i AppAlias
-	err := row.Scan(&i.AppID, &i.AliasID)
+	err := row.Scan(
+		&i.AppID,
+		&i.AliasID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
 const getAppByAlias = `-- name: GetAppByAlias :one
-SELECT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon FROM apps a
+SELECT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN app_alias aa ON aa.app_id = a.steam_appid
 WHERE aa.alias_id = $1
 LIMIT 1
@@ -66,12 +71,14 @@ func (q *Queries) GetAppByAlias(ctx context.Context, aliasID int32) (App, error)
 		&i.PlatformLinux,
 		&i.ReleaseDate,
 		&i.ReleaseComingSoon,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const listAliasesForApp = `-- name: ListAliasesForApp :many
-SELECT app_id, alias_id FROM app_alias WHERE app_id = $1 ORDER BY alias_id
+SELECT app_id, alias_id, created_at, updated_at FROM app_alias WHERE app_id = $1 ORDER BY alias_id
 `
 
 func (q *Queries) ListAliasesForApp(ctx context.Context, appID int32) ([]AppAlias, error) {
@@ -83,7 +90,12 @@ func (q *Queries) ListAliasesForApp(ctx context.Context, appID int32) ([]AppAlia
 	var items []AppAlias
 	for rows.Next() {
 		var i AppAlias
-		if err := rows.Scan(&i.AppID, &i.AliasID); err != nil {
+		if err := rows.Scan(
+			&i.AppID,
+			&i.AliasID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -98,7 +110,7 @@ func (q *Queries) ListAliasesForApp(ctx context.Context, appID int32) ([]AppAlia
 }
 
 const listAppAliases = `-- name: ListAppAliases :many
-SELECT app_id, alias_id FROM app_alias ORDER BY app_id, alias_id
+SELECT app_id, alias_id, created_at, updated_at FROM app_alias ORDER BY app_id, alias_id
 `
 
 func (q *Queries) ListAppAliases(ctx context.Context) ([]AppAlias, error) {
@@ -110,7 +122,12 @@ func (q *Queries) ListAppAliases(ctx context.Context) ([]AppAlias, error) {
 	var items []AppAlias
 	for rows.Next() {
 		var i AppAlias
-		if err := rows.Scan(&i.AppID, &i.AliasID); err != nil {
+		if err := rows.Scan(
+			&i.AppID,
+			&i.AliasID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -125,9 +142,20 @@ func (q *Queries) ListAppAliases(ctx context.Context) ([]AppAlias, error) {
 }
 
 const upsertAppAlias = `-- name: UpsertAppAlias :one
-INSERT INTO app_alias (alias_id, app_id) VALUES ($1, $2)
-ON CONFLICT (alias_id) DO UPDATE SET app_id = EXCLUDED.app_id
-RETURNING app_id, alias_id
+INSERT INTO app_alias (
+    alias_id,
+    app_id,
+    created_at,
+    updated_at
+) VALUES
+    ($1,
+    $2,
+    NOW(),
+    NOW())
+ON CONFLICT (alias_id) DO UPDATE SET
+    app_id = EXCLUDED.app_id,
+    updated_at = NOW()
+RETURNING app_id, alias_id, created_at, updated_at
 `
 
 type UpsertAppAliasParams struct {
@@ -138,6 +166,11 @@ type UpsertAppAliasParams struct {
 func (q *Queries) UpsertAppAlias(ctx context.Context, arg UpsertAppAliasParams) (AppAlias, error) {
 	row := q.db.QueryRowContext(ctx, upsertAppAlias, arg.AliasID, arg.AppID)
 	var i AppAlias
-	err := row.Scan(&i.AppID, &i.AliasID)
+	err := row.Scan(
+		&i.AppID,
+		&i.AliasID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }

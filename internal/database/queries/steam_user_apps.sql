@@ -1,5 +1,15 @@
 -- name: AddSteamUserApp :exec
-INSERT INTO steam_user_apps (steam_id, app_id) VALUES ($1, $2)
+INSERT INTO steam_user_apps (
+    steam_id,
+    app_id,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
 ON CONFLICT DO NOTHING;
 
 -- name: RemoveSteamUserApp :exec
