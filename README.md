@@ -1,2 +1,5 @@
-# What Game Should We Play?
+# Steam Decision Engine
+
+> What Game Should We Play?
+
 WIP Custom api program to suggest common owned or wishlisted games between multiple steam users.
