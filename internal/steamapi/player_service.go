@@ -1,6 +1,7 @@
 package steamapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -36,7 +37,9 @@ type Games struct {
 	AppID int `json:"appid"`
 }
 
-func (client *Client) GetOwnedGames(steamId int64) (*OwnedGamesResponse, error) {
+// GetOwnedGames returns the apps a user owns. A private profile or empty
+// library has no "games" field; that is returned as an empty list.
+func (client *Client) GetOwnedGames(ctx context.Context, steamId int64) (*OwnedGamesResponse, error) {
 	url, err := url.Parse(IPlayerServiceURL + "GetOwnedGames/v1/")
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse GetOwnedGames URL: %v", err)
@@ -47,7 +50,7 @@ func (client *Client) GetOwnedGames(steamId int64) (*OwnedGamesResponse, error) 
 	url.RawQuery = values.Encode()
 
 	fmt.Printf("Getting owned games from URL: %s\n", url.String())
-	req, err := http.NewRequest("GET", url.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create GetOwnedGames request: %v", err)
 	}
@@ -58,9 +61,15 @@ func (client *Client) GetOwnedGames(steamId int64) (*OwnedGamesResponse, error) 
 		return nil, fmt.Errorf("Failed to send GetOwnedGames request: %v", err)
 	}
 	defer resp.Body.Close()
+	if err := checkStatus(resp, "GetOwnedGames"); err != nil {
+		return nil, err
+	}
 	var result OwnedGamesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("Failed to decode GetOwnedGames response: %v", err)
+	}
+	if result.Response.Games == nil {
+		result.Response.Games = []Games{}
 	}
 	return &result, nil
 }

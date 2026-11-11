@@ -34,8 +34,8 @@ func (client *Client) GetAppDetail(ctx context.Context, appID int) (*AppDetail, 
 		return nil, fmt.Errorf("Failed to send GetAppDetail request: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GetAppDetail returned status %d", resp.StatusCode)
+	if err := checkStatus(resp, "GetAppDetail"); err != nil {
+		return nil, err
 	}
 
 	var result map[string]AppDetail
@@ -80,8 +80,8 @@ func (client *Client) GetAppDetails(ctx context.Context, ownedGames OwnedGamesRe
 		return nil, fmt.Errorf("Failed to send GetAppDetails request: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GetAppDetails returned status %d", resp.StatusCode)
+	if err := checkStatus(resp, "GetAppDetails"); err != nil {
+		return nil, err
 	}
 
 	var result map[string]AppDetail

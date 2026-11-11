@@ -40,36 +40,40 @@ sequenceDiagram
 
 ## Decisions
 
-| Topic | Decision |
-|---|---|
-| Queue | Stored in an `import_jobs` table. Survives restarts. |
-| Status | Polling endpoint `GET /api/import-jobs/{id}`. |
-| Per-app failures | Logged and counted in `failed_apps`. The job keeps going. |
-| User refresh | Only after `STEAM_REFRESH_INTERVAL` has passed since the user's last *successful* job. Default 7 days. |
-| App detail freshness | Same `STEAM_REFRESH_INTERVAL`, measured from `apps.updated_at`. |
-| Rate limit | `golang.org/x/time/rate`, 1 store request per 1.5s. Applies to `GetAppDetail` only. |
-| Games no longer owned | Not deleted. Marked `steam_user_apps.removed = TRUE`. |
-| Migrations | Edit `00001_initial_schema.sql`. Local dev databases get reset. |
-| Owned IDs | `steam_user_apps` stores the ID the user owns. It's looked up through `app_alias`. |
-| Aliases | Every app gets an `app_alias` row, including ones that map to themselves (80 -> 80). |
+| Topic                 | Decision                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| Queue                 | Stored in an `import_jobs` table. Survives restarts.                                                   |
+| Status                | Polling endpoint `GET /api/import-jobs/{id}`.                                                          |
+| Per-app failures      | Logged and counted in `failed_apps`. The job keeps going.                                              |
+| User refresh          | Only after `STEAM_REFRESH_INTERVAL` has passed since the user's last _successful_ job. Default 7 days. |
+| App detail freshness  | Same `STEAM_REFRESH_INTERVAL`, measured from `apps.updated_at`.                                        |
+| Rate limit            | `golang.org/x/time/rate`, 1 store request per 1.5s. Applies to `GetAppDetail` only.                    |
+| Games no longer owned | Not deleted. Marked `steam_user_apps.removed = TRUE`.                                                  |
+| Migrations            | Edit `00001_initial_schema.sql`. Local dev databases get reset.                                        |
+| Owned IDs             | `steam_user_apps` stores the ID the user owns. It's looked up through `app_alias`.                     |
+| Aliases               | Every app gets an `app_alias` row, including ones that map to themselves (80 -> 80).                   |
 
-## Phase 0: groundwork
+## Phase 0: groundwork ✅ complete
 
-1. **Fix the duration parsing** in `internal/config/config.go`. The defaults
-   are currently converted to nanoseconds and then multiplied by
-   `time.Second` again. Use `strconv.Itoa(int(defaultX / time.Second))` for
-   `STEAM_API_TIMEOUT` and `STEAM_API_CACHE_INTERVAL`.
-2. **Add `STEAM_REFRESH_INTERVAL`** to `Config` (in seconds, like the
-   others; default `7 * 24 * time.Hour`). Keep it separate from
+1. ✅ **Fix the duration parsing** in `internal/config/config.go`. The defaults
+   were converted to nanoseconds and then multiplied by `time.Second` again.
+   _Done differently:_ the default constants are now plain integers in
+   seconds (`defaultSteamApiTimeout = 5`), so no conversion is needed.
+2. ✅ **Add `STEAM_REFRESH_INTERVAL`** to `Config` as `SteamRefreshInterval`
+   (in seconds, like the others; default 7 days). Kept separate from
    `STEAM_API_CACHE_INTERVAL`, which controls the in-memory HTTP cache.
-3. **Make Steam calls cancellable.** Add a `ctx context.Context` parameter to
-   `GetOwnedGames` and `GetAppDetail` and use `http.NewRequestWithContext`.
-4. **Add `steamapi.ErrRateLimited`** for 429 and 403 responses. Wrap it in a
-   `RateLimitError` carrying the `Retry-After` value if Steam sends one.
-5. **Check status codes in `GetOwnedGames`.** Return an error on non-200.
+3. ✅ **Make Steam calls cancellable.** `GetOwnedGames` and `GetAppDetail`
+   take a `ctx context.Context` and use `http.NewRequestWithContext`.
+4. ✅ **Add `steamapi.ErrRateLimited`** for 429 and 403 responses, wrapped in
+   a `*RateLimitError` carrying the `Retry-After` delay (seconds or HTTP
+   date) if Steam sends one. See `internal/steamapi/errors.go`; the shared
+   `checkStatus` helper is used by `GetOwnedGames`, `GetAppDetail`, and
+   `GetAppDetails`.
+5. ✅ **Check status codes in `GetOwnedGames`.** Returns an error on non-200.
    A missing `games` field (private profile or empty library) returns an
    empty list. The job records it as zero apps.
-6. **Add the dependency:** `go get golang.org/x/time/rate`.
+6. ✅ **Add the dependency:** `golang.org/x/time v0.16.0`. It's marked
+   `// indirect` in `go.mod` until the importer imports it in Phase 2.
 
 ## Phase 1: schema (edit `00001_initial_schema.sql`)
 
@@ -150,19 +154,19 @@ DROP TABLE apps;
 - **`queries/apps.sql`:** `UpsertApp` sets `updated_at`. It's passed in as
   a parameter so tests can control time through `Store.now`.
 - **`queries/steam_user_apps.sql`:**
-  - `AddSteamUserApp` becomes an upsert that sets `removed = FALSE` on
-    conflict, so a re-owned game comes back.
-  - Add `MarkSteamUserAppsRemoved` (`UPDATE ... SET removed = TRUE WHERE
-    steam_id = ? AND app_id NOT IN (sqlc.slice(owned_ids))`).
-  - Add `ListActiveSteamUserApps`, joining `app_alias` and `apps` and
-    filtering `removed = FALSE`.
+    - `AddSteamUserApp` becomes an upsert that sets `removed = FALSE` on
+      conflict, so a re-owned game comes back.
+    - Add `MarkSteamUserAppsRemoved` (`UPDATE ... SET removed = TRUE WHERE
+steam_id = ? AND app_id NOT IN (sqlc.slice(owned_ids))`).
+    - Add `ListActiveSteamUserApps`, joining `app_alias` and `apps` and
+      filtering `removed = FALSE`.
 - **`queries/import_jobs.sql` (new):**
-  - `CreateImportJob`, `GetImportJob`
-  - `GetActiveImportJobForUser` (status `queued` or `running`)
-  - `GetLatestSucceededImportJobForUser`
-  - `MarkImportJobRunning`, `UpdateImportJobProgress`
-  - `FinishImportJob` (status, counts, error, `finished_at`)
-  - `ListUnfinishedImportJobs`
+    - `CreateImportJob`, `GetImportJob`
+    - `GetActiveImportJobForUser` (status `queued` or `running`)
+    - `GetLatestSucceededImportJobForUser`
+    - `MarkImportJobRunning`, `UpdateImportJobProgress`
+    - `FinishImportJob` (status, counts, error, `finished_at`)
+    - `ListUnfinishedImportJobs`
 - **`queries/app_alias.sql`:** no changes. `GetAppByAlias` is the standard
   way to look up an owned app.
 
@@ -216,27 +220,28 @@ single SQLite writer avoids lock contention.
 2. `GetOwnedGames`. If it fails, `FinishImportJob(failed, error)` and stop.
    Otherwise record `total_apps`.
 3. For each owned ID:
-   1. `GetAppByAlias(ownedID)`. If the app exists and `updated_at` is
-      within `refreshInterval`, run `AddSteamUserApp(steamID, ownedID)` and
-      count it as processed. If two owned IDs map to the same app, the second
-      lookup finds the row saved by the first, so the app is fetched once.
-   2. Otherwise `limiter.Wait(ctx)`, then `GetAppDetail(ctx, ownedID)`:
-      - **`ErrAppNotFound`:** log it and count it as skipped. The user can't
-        be linked because no alias row exists.
-      - **`ErrRateLimited`:** wait for `Retry-After`, or back off
-        exponentially from 5s. Retry up to 3 times, then count it as failed.
-      - **Other errors:** log and count as failed.
-   3. Save the app in one transaction (`queries.WithTx(tx)`):
-      1. `UpsertApp` keyed by `canonicalID = Data.AppID`, setting `updated_at`.
-      2. `UpsertAppAlias(canonicalID, canonicalID)`. If
-         `ownedID != canonicalID`, also `UpsertAppAlias(ownedID, canonicalID)`.
-      3. `ClearAppCategories` and `ClearAppGenres` for `canonicalID`, then
-         upsert and re-add the current ones (logic moved from
-         `addAppCategories` and `addAppGenres`).
-      4. `AddSteamUserApp(steamID, ownedID)`.
+    1. `GetAppByAlias(ownedID)`. If the app exists and `updated_at` is
+       within `refreshInterval`, run `AddSteamUserApp(steamID, ownedID)` and
+       count it as processed. If two owned IDs map to the same app, the second
+       lookup finds the row saved by the first, so the app is fetched once.
+    2. Otherwise `limiter.Wait(ctx)`, then `GetAppDetail(ctx, ownedID)`:
+        - **`ErrAppNotFound`:** log it and count it as skipped. The user can't
+          be linked because no alias row exists.
+        - **`ErrRateLimited`:** wait for `Retry-After`, or back off
+          exponentially from 5s. Retry up to 3 times, then count it as failed.
+        - **Other errors:** log and count as failed.
+    3. Save the app in one transaction (`queries.WithTx(tx)`):
+        1. `UpsertApp` keyed by `canonicalID = Data.AppID`, setting `updated_at`.
+        2. `UpsertAppAlias(canonicalID, canonicalID)`. If
+           `ownedID != canonicalID`, also `UpsertAppAlias(ownedID, canonicalID)`.
+        3. `ClearAppCategories` and `ClearAppGenres` for `canonicalID`, then
+           upsert and re-add the current ones (logic moved from
+           `addAppCategories` and `addAppGenres`).
+        4. `AddSteamUserApp(steamID, ownedID)`.
 
-      If the transaction fails, roll back, log it, and count it as failed.
-   4. Every 10 apps, call `UpdateImportJobProgress`.
+        If the transaction fails, roll back, log it, and count it as failed.
+
+    4. Every 10 apps, call `UpdateImportJobProgress`.
 4. `MarkSteamUserAppsRemoved(steamID, all owned IDs)`. Skip this if
    `GetOwnedGames` returned no games, so a private profile doesn't mark the
    whole library removed.
@@ -283,10 +288,10 @@ a mutex closes the gap.
 - **`internal/httpserver/app.go`:** add `Importer` to `Options`, pass it to
   `api.NewHandler`, and register `GET /api/import-jobs/{id}`.
 - **`cmd/server/main.go`:**
-  - Create the importer after `database.Migrate`, and call `Start` with a
-    context that ends when the server shuts down.
-  - On shutdown, call `server.Shutdown` first, then `importer.Shutdown`
-    (with the same 5s timeout).
+    - Create the importer after `database.Migrate`, and call `Start` with a
+      context that ends when the server shuts down.
+    - On shutdown, call `server.Shutdown` first, then `importer.Shutdown`
+      (with the same 5s timeout).
 - **`internal/steamapi`:** `*Client` has to satisfy `importer.SteamClient`.
 
 ## Phase 5: tests

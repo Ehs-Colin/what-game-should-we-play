@@ -76,7 +76,7 @@ func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, requ
 	}
 
 	//fmt.Printf("Getting owned games for Steam ID: %v\n", steamID)
-	userApps, err := handler.apiStore.steamClient.GetOwnedGames(steamID)
+	userApps, err := handler.apiStore.steamClient.GetOwnedGames(request.Context(), steamID)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
 		return
