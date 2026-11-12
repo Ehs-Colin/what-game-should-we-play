@@ -1,0 +1,244 @@
+package api
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbgen"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbtest"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/importer"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/steamapi"
+)
+
+const (
+	testSteamID         = int64(76561198000000001)
+	testVanity          = "someplayer"
+	testRefreshInterval = time.Hour
+)
+
+type fakeResolver struct {
+	ids map[string]int64
+	err error
+}
+
+func (f fakeResolver) ResolveVanityURL(_ context.Context, vanityUrl string) (*steamapi.VanityUrl, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	result := &steamapi.VanityUrl{}
+	if id, ok := f.ids[vanityUrl]; ok {
+		result.Response.Success = 1
+		result.Response.SteamID = strconv.FormatInt(id, 10)
+	} else {
+		result.Response.Success = 42 // Steam's "no match"
+	}
+	return result, nil
+}
+
+type handlerEnv struct {
+	queries *dbgen.Queries
+	mux     *http.ServeMux
+}
+
+func newHandlerEnv(t *testing.T, resolver fakeResolver) *handlerEnv {
+	t.Helper()
+	db := dbtest.Open(t)
+	// The importer isn't started, so created jobs stay queued and Steam is
+	// never called.
+	jobImporter := importer.New(db, nil, nil, testRefreshInterval)
+	handler := NewHandler(NewStore(db, "", resolver), jobImporter, nil)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/steamuser", handler.InsertSteamUser)
+	mux.HandleFunc("GET /api/import-jobs/{id}", handler.GetImportJob)
+	return &handlerEnv{queries: dbgen.New(db), mux: mux}
+}
+
+func defaultResolver() fakeResolver {
+	return fakeResolver{ids: map[string]int64{testVanity: testSteamID}}
+}
+
+func (env *handlerEnv) do(t *testing.T, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+	env.mux.ServeHTTP(recorder, request)
+	return recorder
+}
+
+func (env *handlerEnv) postUser(t *testing.T) (*httptest.ResponseRecorder, insertSteamUserResponse) {
+	t.Helper()
+	recorder := env.do(t, http.MethodPost, "/api/steamuser", fmt.Sprintf(`{"vanityUrl":%q}`, testVanity))
+	var body insertSteamUserResponse
+	if recorder.Code < 300 {
+		if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode response %q: %v", recorder.Body.String(), err)
+		}
+	}
+	return recorder, body
+}
+
+func (env *handlerEnv) finishJob(t *testing.T, id int64, status string, at time.Time) {
+	t.Helper()
+	if _, err := env.queries.FinishImportJob(context.Background(), dbgen.FinishImportJobParams{
+		Status:     status,
+		FinishedAt: sql.NullTime{Time: at, Valid: true},
+		ID:         id,
+	}); err != nil {
+		t.Fatalf("finish job: %v", err)
+	}
+}
+
+func (env *handlerEnv) jobCount(t *testing.T) int {
+	t.Helper()
+	jobs, err := env.queries.ListUnfinishedImportJobs(context.Background())
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	return len(jobs)
+}
+
+func assertCreated(t *testing.T, recorder *httptest.ResponseRecorder, body insertSteamUserResponse) {
+	t.Helper()
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202 (%s)", recorder.Code, recorder.Body.String())
+	}
+	if want := importJobLocation(body.ImportJob.ID); recorder.Header().Get("Location") != want {
+		t.Fatalf("Location = %q, want %q", recorder.Header().Get("Location"), want)
+	}
+	if body.ImportJob.Status != importer.StatusQueued {
+		t.Fatalf("job status = %q, want queued", body.ImportJob.Status)
+	}
+}
+
+func TestInsertSteamUserNewUser(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+
+	recorder, body := env.postUser(t)
+	assertCreated(t, recorder, body)
+	if body.SteamUser.SteamID != testSteamID || body.SteamUser.Name != testVanity {
+		t.Fatalf("steamUser = %+v", body.SteamUser)
+	}
+	if body.ImportJob.SteamID != testSteamID {
+		t.Fatalf("importJob.steamId = %d", body.ImportJob.SteamID)
+	}
+}
+
+func TestInsertSteamUserActiveJob(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	_, first := env.postUser(t)
+
+	recorder, body := env.postUser(t)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if body.ImportJob.ID != first.ImportJob.ID {
+		t.Fatalf("job ID = %d, want %d", body.ImportJob.ID, first.ImportJob.ID)
+	}
+	if recorder.Header().Get("Location") != "" {
+		t.Fatalf("unexpected Location header")
+	}
+	if got := env.jobCount(t); got != 1 {
+		t.Fatalf("%d unfinished jobs, want 1", got)
+	}
+}
+
+func TestInsertSteamUserRefreshInterval(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     string
+		finishedAt time.Duration // relative to now
+		wantCode   int
+	}{
+		{"recent success", importer.StatusSucceeded, -time.Minute, http.StatusOK},
+		{"old success", importer.StatusSucceeded, -2 * testRefreshInterval, http.StatusAccepted},
+		{"recent failure", importer.StatusFailed, -time.Minute, http.StatusAccepted},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			env := newHandlerEnv(t, defaultResolver())
+			_, first := env.postUser(t)
+			env.finishJob(t, first.ImportJob.ID, test.status, time.Now().Add(test.finishedAt))
+
+			recorder, body := env.postUser(t)
+			if recorder.Code != test.wantCode {
+				t.Fatalf("status = %d, want %d (%s)", recorder.Code, test.wantCode, recorder.Body.String())
+			}
+			if test.wantCode == http.StatusOK {
+				if body.ImportJob.ID != first.ImportJob.ID || body.ImportJob.FinishedAt == nil {
+					t.Fatalf("importJob = %+v, want finished job %d", body.ImportJob, first.ImportJob.ID)
+				}
+				return
+			}
+			assertCreated(t, recorder, body)
+			if body.ImportJob.ID == first.ImportJob.ID {
+				t.Fatalf("expected a new job")
+			}
+		})
+	}
+}
+
+func TestInsertSteamUserBadRequests(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolver fakeResolver
+		body     string
+		wantCode int
+	}{
+		{"invalid JSON", defaultResolver(), `{`, http.StatusBadRequest},
+		{"missing vanityUrl", defaultResolver(), `{"vanityUrl":"  "}`, http.StatusBadRequest},
+		{"unknown user", defaultResolver(), `{"vanityUrl":"nobody"}`, http.StatusNotFound},
+		{"steam error", fakeResolver{err: errors.New("boom")}, `{"vanityUrl":"x"}`, http.StatusInternalServerError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			env := newHandlerEnv(t, test.resolver)
+			recorder := env.do(t, http.MethodPost, "/api/steamuser", test.body)
+			if recorder.Code != test.wantCode {
+				t.Fatalf("status = %d, want %d (%s)", recorder.Code, test.wantCode, recorder.Body.String())
+			}
+			if got := env.jobCount(t); got != 0 {
+				t.Fatalf("%d jobs created, want 0", got)
+			}
+		})
+	}
+}
+
+func TestGetImportJob(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	_, created := env.postUser(t)
+	env.finishJob(t, created.ImportJob.ID, importer.StatusSucceeded, time.Now())
+
+	recorder := env.do(t, http.MethodGet, importJobLocation(created.ImportJob.ID), "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body.String())
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &fields); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, key := range []string{"status", "totalApps", "processedApps", "skippedApps", "failedApps", "error", "createdAt", "startedAt", "finishedAt"} {
+		if _, ok := fields[key]; !ok {
+			t.Errorf("response missing %q: %s", key, recorder.Body.String())
+		}
+	}
+	if fields["status"] != importer.StatusSucceeded || fields["finishedAt"] == nil || fields["error"] != nil {
+		t.Fatalf("unexpected job: %s", recorder.Body.String())
+	}
+
+	if code := env.do(t, http.MethodGet, "/api/import-jobs/abc", "").Code; code != http.StatusBadRequest {
+		t.Fatalf("non-numeric ID: status = %d, want 400", code)
+	}
+	if code := env.do(t, http.MethodGet, "/api/import-jobs/999999", "").Code; code != http.StatusNotFound {
+		t.Fatalf("unknown ID: status = %d, want 404", code)
+	}
+}

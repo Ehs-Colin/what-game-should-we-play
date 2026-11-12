@@ -14,7 +14,7 @@ Steam's rate limit and saves them. Clients poll a status endpoint for progress.
 sequenceDiagram
     participant C as Client
     participant H as InsertSteamUser
-    participant DB as SQLite
+    participant DB as Postgres
     participant W as Import worker
     participant S as Steam
     C->>H: POST /api/steamuser
@@ -335,7 +335,24 @@ and it's also deferred for the error paths.
       (with the same 5s timeout).
 - **`internal/steamapi`:** `*Client` has to satisfy `importer.SteamClient`.
 
-## Phase 5: tests
+## Phase 5: tests ✅ complete
+
+_Done differently:_ with Postgres, `internal/database/dbtest.Open` creates
+a migrated schema per test from `TEST_DATABASE_URL` and drops it afterwards.
+Database tests are skipped when the variable is unset. To fake vanity URL
+lookups in handler tests, `Store` takes a `VanityResolver` interface instead
+of `*steamapi.Client`. Beyond the list below, there are tests for:
+
+- Duplicate owned IDs.
+- Nil app data.
+- Non-rate-limit errors.
+- Transaction rollback.
+- `GetOwnedGames` failure.
+- Finished jobs not rerun.
+- Shutdown leaving a job `running`.
+- `Enqueue` on a full queue.
+- Concurrent `RequestImport` calls.
+- `POST` validation errors.
 
 ### Importer
 

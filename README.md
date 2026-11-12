@@ -30,3 +30,13 @@ go run ./cmd/server
 Migrations are applied automatically on startup. After editing files in
 `internal/database/queries` or `internal/database/migrations`, regenerate the
 query code with `sqlc generate`.
+
+## Tests
+
+Tests that need a database read `TEST_DATABASE_URL` and are skipped when it
+isn't set. Each test runs in its own schema, which is dropped afterwards, so
+you can point it at the development database:
+
+```sh
+TEST_DATABASE_URL=postgres://wgswp:change-me@localhost:5432/wgswp?sslmode=disable go test ./...
+```
