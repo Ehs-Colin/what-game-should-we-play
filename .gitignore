@@ -1,2 +1,4 @@
 .env*
 .cmds*
+opencode.jsonc
+.opencode*
