@@ -17,8 +17,7 @@ import (
 
 const (
 	defaultPort                  = 3030
-	defaultDatabasePath          = ""
-	defaultDatabaseFilename      = "wgswp.sqlite"
+	defaultDatabaseMaxOpenConns  = 10
 	defaultAppOrigin             = "http://localhost:5959"
 	activeEncryptionVersionEnv   = "DATA_ENCRYPTION_ACTIVE_VERSION"
 	encryptionKeyEnvPrefix       = "DATA_ENCRYPTION_KEY_"
@@ -29,7 +28,8 @@ const (
 
 type Config struct {
 	Port                  int
-	DatabasePath          string
+	DatabaseURL           string
+	DatabaseMaxOpenConns  int
 	AppOrigin             string
 	SteamApiKey           string
 	SteamApiTimeout       time.Duration
@@ -76,9 +76,16 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 		return Config{}, errors.New("PORT must be no greater than 65535")
 	}
 
-	databasePath := environment["DATABASE_URL"]
-	if databasePath == "" {
-		databasePath = filepath.Join(workingDirectory, "data", defaultDatabaseFilename)
+	databaseURL, err := requireEnvironmentVariable(environment, "DATABASE_URL")
+	if err != nil {
+		return Config{}, err
+	}
+	databaseMaxOpenConns, err := parseNonNegativeInteger(valueOrDefault(environment, "DATABASE_MAX_OPEN_CONNS", strconv.Itoa(defaultDatabaseMaxOpenConns)), "DATABASE_MAX_OPEN_CONNS")
+	if err != nil {
+		return Config{}, err
+	}
+	if databaseMaxOpenConns == 0 {
+		return Config{}, errors.New("DATABASE_MAX_OPEN_CONNS must be greater than 0")
 	}
 
 	appOrigin, err := parseOrigin(valueOrDefault(environment, "APP_ORIGIN", defaultAppOrigin))
@@ -108,7 +115,8 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 
 	return Config{
 		Port:                  port,
-		DatabasePath:          databasePath,
+		DatabaseURL:           databaseURL,
+		DatabaseMaxOpenConns:  databaseMaxOpenConns,
 		AppOrigin:             appOrigin,
 		SteamApiKey:           steamApiKey,
 		SteamApiTimeout:       time.Duration(int64(steamApiTimeout) * int64(time.Second)),

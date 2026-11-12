@@ -39,7 +39,7 @@ func run(ctx context.Context) error {
 
 	steamClient := steamapi.NewClient(appConfig.SteamApiTimeout, appConfig.SteamApiCacheInterval, appConfig.SteamApiKey)
 
-	databaseConnection, err := database.Open(ctx, appConfig.DatabasePath)
+	databaseConnection, err := database.Open(ctx, appConfig.DatabaseURL, appConfig.DatabaseMaxOpenConns)
 	if err != nil {
 		return err
 	}

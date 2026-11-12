@@ -67,7 +67,6 @@ type Genre struct {
 }
 
 type SteamUser struct {
-	ID        int32     `json:"id"`
 	SteamID   int64     `json:"steam_id"`
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`

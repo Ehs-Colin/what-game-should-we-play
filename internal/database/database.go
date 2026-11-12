@@ -6,35 +6,16 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"net/url"
-	"os"
-	"path/filepath"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-	_ "modernc.org/sqlite"
 )
-
-const maxOpenConnections = 4
 
 //go:embed migrations/*.sql
 var embeddedMigrations embed.FS
 
-func Open(ctx context.Context, databasePath string) (*sql.DB, error) {
-	absolutePath, err := filepath.Abs(databasePath)
-	if err != nil {
-		return nil, fmt.Errorf("resolve database path: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
-		return nil, fmt.Errorf("create database directory: %w", err)
-	}
-
-	databaseURL := url.URL{Scheme: "file", Path: filepath.ToSlash(absolutePath)}
-	parameters := databaseURL.Query()
-	parameters.Add("_pragma", "foreign_keys(1)")
-	parameters.Add("_pragma", "busy_timeout(5000)")
-	databaseURL.RawQuery = parameters.Encode()
-
-	database, err := sql.Open("sqlite", databaseURL.String())
+func Open(ctx context.Context, databaseURL string, maxOpenConnections int) (*sql.DB, error) {
+	database, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
@@ -53,7 +34,7 @@ func Migrate(ctx context.Context, database *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("load embedded migrations: %w", err)
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, database, migrationFiles)
+	provider, err := goose.NewProvider(goose.DialectPostgres, database, migrationFiles)
 	if err != nil {
 		return fmt.Errorf("create migration provider: %w", err)
 	}

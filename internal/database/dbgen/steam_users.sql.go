@@ -20,7 +20,7 @@ INSERT INTO steam_users (
     $2,
     NOW(),
     NOW()
-) RETURNING id, steam_id, name, created_at, updated_at
+) RETURNING steam_id, name, created_at, updated_at
 `
 
 type CreateSteamUserParams struct {
@@ -32,7 +32,6 @@ func (q *Queries) CreateSteamUser(ctx context.Context, arg CreateSteamUserParams
 	row := q.db.QueryRowContext(ctx, createSteamUser, arg.SteamID, arg.Name)
 	var i SteamUser
 	err := row.Scan(
-		&i.ID,
 		&i.SteamID,
 		&i.Name,
 		&i.CreatedAt,
@@ -51,14 +50,13 @@ func (q *Queries) DeleteSteamUser(ctx context.Context, steamID int64) error {
 }
 
 const getSteamUser = `-- name: GetSteamUser :one
-SELECT id, steam_id, name, created_at, updated_at FROM steam_users WHERE steam_id = $1 LIMIT 1
+SELECT steam_id, name, created_at, updated_at FROM steam_users WHERE steam_id = $1 LIMIT 1
 `
 
 func (q *Queries) GetSteamUser(ctx context.Context, steamID int64) (SteamUser, error) {
 	row := q.db.QueryRowContext(ctx, getSteamUser, steamID)
 	var i SteamUser
 	err := row.Scan(
-		&i.ID,
 		&i.SteamID,
 		&i.Name,
 		&i.CreatedAt,
@@ -71,7 +69,7 @@ const updateSteamUser = `-- name: UpdateSteamUser :one
 UPDATE steam_users SET
     name = $2,
     updated_at = NOW()
-WHERE steam_id = $1 RETURNING id, steam_id, name, created_at, updated_at
+WHERE steam_id = $1 RETURNING steam_id, name, created_at, updated_at
 `
 
 type UpdateSteamUserParams struct {
@@ -83,7 +81,6 @@ func (q *Queries) UpdateSteamUser(ctx context.Context, arg UpdateSteamUserParams
 	row := q.db.QueryRowContext(ctx, updateSteamUser, arg.SteamID, arg.Name)
 	var i SteamUser
 	err := row.Scan(
-		&i.ID,
 		&i.SteamID,
 		&i.Name,
 		&i.CreatedAt,
@@ -106,7 +103,7 @@ INSERT INTO steam_users (
 ) ON CONFLICT (steam_id) DO UPDATE SET
     name = $2,
     updated_at = NOW()
-RETURNING id, steam_id, name, created_at, updated_at
+RETURNING steam_id, name, created_at, updated_at
 `
 
 type UpsertSteamUserParams struct {
@@ -118,7 +115,6 @@ func (q *Queries) UpsertSteamUser(ctx context.Context, arg UpsertSteamUserParams
 	row := q.db.QueryRowContext(ctx, upsertSteamUser, arg.SteamID, arg.Name)
 	var i SteamUser
 	err := row.Scan(
-		&i.ID,
 		&i.SteamID,
 		&i.Name,
 		&i.CreatedAt,
