@@ -109,8 +109,8 @@ INSERT INTO apps (
     $15,
     $16,
     $17,
-    NOW(),
-    NOW()
+    $18,
+    $18
 )
 ON CONFLICT (steam_appid) DO UPDATE SET
     name = EXCLUDED.name,
@@ -129,8 +129,7 @@ ON CONFLICT (steam_appid) DO UPDATE SET
     platform_linux = EXCLUDED.platform_linux,
     release_date = EXCLUDED.release_date,
     release_coming_soon = EXCLUDED.release_coming_soon,
-    updated_at = NOW(),
-    created_at = NOW()
+    updated_at = EXCLUDED.updated_at
 RETURNING *;
 
 -- name: DeleteApp :exec

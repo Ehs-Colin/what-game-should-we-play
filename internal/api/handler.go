@@ -1,39 +1,96 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbgen"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpx"
-	"github.com/Ehs-Colin/what-game-should-we-play/internal/steamapi"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/logging"
 )
 
 type insertSteamUserRequest struct {
 	VanityUrl string `json:"vanityUrl"`
 }
 
-type Handler struct {
-	apiStore *Store
-	//steamClient *steamapi.Client
-	//logger  *logging.Logger
+// ImportRequester creates or returns a user's import job. It's satisfied by
+// *importer.Importer.
+type ImportRequester interface {
+	RequestImport(ctx context.Context, steamID int64) (dbgen.ImportJob, bool, error)
 }
 
-func NewHandler(apiStore *Store) *Handler {
+type Handler struct {
+	apiStore *Store
+	importer ImportRequester
+	logger   *logging.Logger
+}
+
+func NewHandler(apiStore *Store, importer ImportRequester, logger *logging.Logger) *Handler {
 	return &Handler{
 		apiStore: apiStore,
+		importer: importer,
+		logger:   logger,
 	}
 }
 
+type insertSteamUserResponse struct {
+	SteamUser dbgen.SteamUser `json:"steamUser"`
+	ImportJob importJobView   `json:"importJob"`
+}
+
+type importJobView struct {
+	ID            int64      `json:"id"`
+	SteamID       int64      `json:"steamId"`
+	Status        string     `json:"status"`
+	TotalApps     int32      `json:"totalApps"`
+	ProcessedApps int32      `json:"processedApps"`
+	SkippedApps   int32      `json:"skippedApps"`
+	FailedApps    int32      `json:"failedApps"`
+	Error         *string    `json:"error"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	StartedAt     *time.Time `json:"startedAt"`
+	FinishedAt    *time.Time `json:"finishedAt"`
+}
+
+func newImportJobView(job dbgen.ImportJob) importJobView {
+	view := importJobView{
+		ID:            job.ID,
+		SteamID:       job.SteamID,
+		Status:        job.Status,
+		TotalApps:     job.TotalApps,
+		ProcessedApps: job.ProcessedApps,
+		SkippedApps:   job.SkippedApps,
+		FailedApps:    job.FailedApps,
+		CreatedAt:     job.CreatedAt,
+	}
+	if job.Error.Valid {
+		view.Error = &job.Error.String
+	}
+	if job.StartedAt.Valid {
+		view.StartedAt = &job.StartedAt.Time
+	}
+	if job.FinishedAt.Valid {
+		view.FinishedAt = &job.FinishedAt.Time
+	}
+	return view
+}
+
+func importJobLocation(id int64) string {
+	return fmt.Sprintf("/api/import-jobs/%d", id)
+}
+
+// InsertSteamUser saves the user and queues a library import. It responds 202
+// when a new job was created, or 200 with the existing active or still-fresh
+// job.
 func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, request *http.Request) {
 	// TODO::Require user login with write permissions
-	// TODO::Check if user already exists
 	var body insertSteamUserRequest
 	request.Body = http.MaxBytesReader(responseWriter, request.Body, 1<<10)
 	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
@@ -46,7 +103,6 @@ func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, requ
 		return
 	}
 
-	//fmt.Printf("Resolving Vanity URL: %v\n", vanityUrl)
 	resolved, err := handler.apiStore.steamClient.ResolveVanityURL(request.Context(), vanityUrl)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
@@ -58,14 +114,12 @@ func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, requ
 		return
 	}
 
-	//fmt.Printf("Resolved Steam ID: %v\n", resolved.Response.SteamID)
 	steamID, err := strconv.ParseInt(resolved.Response.SteamID, 10, 64)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
 		return
 	}
 
-	//fmt.Printf("Creating Steam User %s with Steam ID: %v\n", vanityUrl, steamID)
 	steamUser, err := handler.apiStore.queries.UpsertSteamUser(request.Context(), dbgen.UpsertSteamUserParams{
 		SteamID: steamID,
 		Name:    vanityUrl,
@@ -75,157 +129,39 @@ func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, requ
 		return
 	}
 
-	//fmt.Printf("Getting owned games for Steam ID: %v\n", steamID)
-	userApps, err := handler.apiStore.steamClient.GetOwnedGames(request.Context(), steamID)
-	if err != nil {
-		handler.internalError(responseWriter, request, err)
-		return
-	}
-	err = handler.addApps(request, *userApps, steamID)
+	job, created, err := handler.importer.RequestImport(request.Context(), steamID)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
 		return
 	}
 
-	httpx.RespondWithJSON(responseWriter, http.StatusCreated, steamUser)
+	status := http.StatusOK
+	if created {
+		status = http.StatusAccepted
+		responseWriter.Header().Set("Location", importJobLocation(job.ID))
+	}
+	httpx.RespondWithJSON(responseWriter, status, insertSteamUserResponse{
+		SteamUser: steamUser,
+		ImportJob: newImportJobView(job),
+	})
 }
 
-func (handler *Handler) addApps(request *http.Request, apps steamapi.OwnedGamesResponse, steamID int64) error {
-	// Upsert every app before adding categories and genres, which reference the app rows.
-	upsertedApps := make(map[int]*steamapi.AppDetail, len(apps.Response.Games))
-	for _, app := range apps.Response.Games {
-		//TODO::Check database for existing app and last time it was updated.  Update only if necessary.
-		appID := app.AppID
-		steamApp, err := handler.apiStore.steamClient.GetAppDetail(request.Context(), appID)
-		if errors.Is(err, steamapi.ErrAppNotFound) {
-			log.Printf("Skipping app %d: missing or removed from Steam", appID)
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("Failed to get App Detail From Steam: %v", err)
-		}
-
-		// Free apps have no price_overview; store them as a zero price.
-		priceCurrency := "USD"
-		priceInitial, priceFinal, priceDiscountPercent := 0, 0, 0
-		priceFinalFormatted := "$0.00"
-		if price := steamApp.Data.PriceOverview; price != nil {
-			priceCurrency = price.Currency
-			priceInitial = price.Initial
-			priceFinal = price.Final
-			priceDiscountPercent = price.DiscountPercent
-			priceFinalFormatted = price.FinalFormatted
-		}
-		_, err = handler.apiStore.queries.UpsertApp(request.Context(), dbgen.UpsertAppParams{
-			SteamAppid:           int32(steamApp.Data.AppID),
-			Name:                 nullString(steamApp.Data.Name),
-			DetailedDescription:  nullString(steamApp.Data.DetailedDescription),
-			AboutTheGame:         nullString(steamApp.Data.AboutTheGame),
-			ShortDescription:     nullString(steamApp.Data.ShortDescription),
-			HeaderImage:          nullString(steamApp.Data.HeaderImage),
-			Website:              nullString(steamApp.Data.Website),
-			PriceCurrency:        sql.NullString{String: priceCurrency, Valid: true},
-			PriceInitial:         sql.NullInt32{Int32: int32(priceInitial), Valid: true},
-			PriceFinal:           sql.NullInt32{Int32: int32(priceFinal), Valid: true},
-			PriceDiscountPercent: sql.NullInt32{Int32: int32(priceDiscountPercent), Valid: true},
-			PriceFinalFormatted:  sql.NullString{String: priceFinalFormatted, Valid: true},
-			PlatformWindows:      sql.NullBool{Bool: steamApp.Data.Platforms.Windows, Valid: true},
-			PlatformMac:          sql.NullBool{Bool: steamApp.Data.Platforms.Mac, Valid: true},
-			PlatformLinux:        sql.NullBool{Bool: steamApp.Data.Platforms.Linux, Valid: true},
-			ReleaseDate:          nullString(steamApp.Data.ReleaseDate.Date),
-			ReleaseComingSoon:    sql.NullBool{Bool: steamApp.Data.ReleaseDate.ComingSoon, Valid: true},
-		})
-		if err != nil {
-			return fmt.Errorf("Failed to Insert/Update AppDetail(%d): %v", appID, err)
-		}
-		canonicalID := steamApp.Data.AppID
-		if canonicalID != appID {
-			log.Printf("App %d resolves to app %d on Steam", appID, canonicalID)
-			_, err = handler.apiStore.queries.UpsertAppAlias(request.Context(), dbgen.UpsertAppAliasParams{
-				AliasID: int32(appID),
-				AppID:   int32(canonicalID),
-			})
-			if err != nil {
-				return fmt.Errorf("Failed to Add App Alias(%d -> %d): %v", appID, canonicalID, err)
-			}
-		}
-		upsertedApps[canonicalID] = steamApp
+func (handler *Handler) GetImportJob(responseWriter http.ResponseWriter, request *http.Request) {
+	id, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
+	if err != nil {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "import job id must be a number")
+		return
 	}
-
-	//Add the user's ownership, categories, and genres to the database
-	for appID, steamApp := range upsertedApps {
-		err := handler.apiStore.queries.AddSteamUserApp(request.Context(), dbgen.AddSteamUserAppParams{
-			SteamID: steamID,
-			AppID:   int32(appID),
-		})
-		if err != nil {
-			return fmt.Errorf("Failed to Add Steam User(%d) App(%d): %v", steamID, appID, err)
-		}
-		err = handler.addAppCategories(request, steamApp.Data.Categories, appID)
-		if err != nil {
-			return fmt.Errorf("Failed to Add App Categories: %v", err)
-		}
-		err = handler.addAppGenres(request, steamApp.Data.Genres, appID)
-		if err != nil {
-			return fmt.Errorf("Failed to Add App Genres: %v", err)
-		}
+	job, err := handler.apiStore.queries.GetImportJob(request.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.RespondWithError(responseWriter, http.StatusNotFound, "import job not found")
+		return
 	}
-	return nil
-}
-
-func (handler *Handler) addAppCategories(request *http.Request, categories []steamapi.Category, appId int) error {
-	for _, category := range categories {
-		//Insert category into the database
-		_, err := handler.apiStore.queries.UpsertCategory(request.Context(), dbgen.UpsertCategoryParams{
-			ID: int32(category.ID),
-			Description: sql.NullString{
-				String: category.Description,
-				Valid:  true,
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("Failed to Upsert Category: %v", err)
-		}
-		//Add category to the app
-		err = handler.apiStore.queries.AddAppCategory(request.Context(), dbgen.AddAppCategoryParams{
-			CategoryID: int32(category.ID),
-			AppID:      int32(appId),
-		})
-		if err != nil {
-			return fmt.Errorf("Failed to Add App(%d) Category(%d): %v", appId, category.ID, err)
-		}
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
 	}
-	return nil
-}
-
-func (handler *Handler) addAppGenres(request *http.Request, genres []steamapi.Genre, appId int) error {
-	for _, genre := range genres {
-		//Insert genre into the database
-		genreId, err := strconv.Atoi(genre.ID)
-		if err != nil {
-			return fmt.Errorf("Failed to convert genre ID to int: %v", err)
-		}
-		_, err = handler.apiStore.queries.UpsertGenre(request.Context(), dbgen.UpsertGenreParams{
-			ID: int32(genreId),
-			Description: sql.NullString{
-				String: genre.Description,
-				Valid:  true,
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("Failed to Upsert Genre: %v", err)
-		}
-		//Add genre to the app
-
-		err = handler.apiStore.queries.AddAppGenre(request.Context(), dbgen.AddAppGenreParams{
-			GenreID: int32(genreId),
-			AppID:   int32(appId),
-		})
-		if err != nil {
-			return fmt.Errorf("Failed to Add App Genre: %v", err)
-		}
-	}
-	return nil
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, newImportJobView(job))
 }
 
 func (handler *Handler) GetSteamUserById(responseWriter http.ResponseWriter, request *http.Request) {
@@ -240,12 +176,13 @@ func (handler *Handler) GetSteamUsers(responseWriter http.ResponseWriter, reques
 
 }
 
-func (handler *Handler) internalError(responseWriter http.ResponseWriter, _ *http.Request, err error) {
-	//TODO::LOGGER
-	//_ = handler.logger.Event("unhandled_error", map[string]any{"method": request.Method, "path": request.URL.Path, "message": err.Error()})
+func (handler *Handler) internalError(responseWriter http.ResponseWriter, request *http.Request, err error) {
+	if handler.logger != nil {
+		_ = handler.logger.Event("unhandled_error", map[string]any{
+			"method":  request.Method,
+			"path":    request.URL.Path,
+			"message": err.Error(),
+		})
+	}
 	httpx.RespondWithError(responseWriter, http.StatusInternalServerError, err.Error())
-}
-
-func nullString(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: s != ""}
 }

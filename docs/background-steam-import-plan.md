@@ -72,10 +72,22 @@ sequenceDiagram
 5. ✅ **Check status codes in `GetOwnedGames`.** Returns an error on non-200.
    A missing `games` field (private profile or empty library) returns an
    empty list. The job records it as zero apps.
-6. ✅ **Add the dependency:** `golang.org/x/time v0.16.0`. It's marked
-   `// indirect` in `go.mod` until the importer imports it in Phase 2.
+6. ✅ **Add the dependency:** `golang.org/x/time v0.16.0`. Now a direct
+   dependency, used by the importer.
 
-## Phase 1: schema (edit `00001_initial_schema.sql`)
+## Phase 1: schema (edit `00001_initial_schema.sql`) ✅ complete
+
+_Done differently:_ the project moved to Postgres after this plan was
+written, so:
+
+- Timestamps are `TIMESTAMPTZ`, and `import_jobs.id` is
+  `BIGINT GENERATED ALWAYS AS IDENTITY`. A `CHECK` constraint limits
+  `status` to the four allowed values.
+- `MarkSteamUserAppsRemoved` uses `NOT (app_id = ANY(@owned_ids::int[]))`
+  instead of `sqlc.slice`, which sqlc doesn't support for Postgres. sqlc's
+  `database/sql` output needs `github.com/lib/pq` for `pq.Array`. pgx is
+  still the driver.
+- `UpsertApp` no longer overwrites `created_at` on conflict.
 
 ### `apps`
 
@@ -172,7 +184,21 @@ steam_id = ? AND app_id NOT IN (sqlc.slice(owned_ids))`).
 
 Delete the local database, then run `sqlc generate`.
 
-## Phase 2: `internal/importer` package
+## Phase 2: `internal/importer` package ✅ complete
+
+Implemented in `internal/importer/importer.go`. Additions to the plan:
+
+- `New(database, steam, logger, refreshInterval)` constructor, and a
+  `retryBackoff` field (default 5s) so tests can shorten it.
+- The worker skips a job whose status is no longer `queued` or `running`,
+  in case it was enqueued twice.
+- Owned IDs are de-duplicated before counting `total_apps`.
+- A per-app error caused by shutdown doesn't count as failed. The job is
+  left `running`.
+- An alias row only exists after the owned ID has been fetched once. So if
+  a user owns 100 (-> 80) and 80, the app is fetched once only when 100 is
+  processed first. If 80 comes first, 100 is still fetched to discover its
+  alias. The Phase 5 "two owned IDs" test should order the IDs accordingly.
 
 ### Types
 
@@ -252,7 +278,17 @@ Log through `logging.Logger.Event`, with events such as
 `import_app_skipped`, `import_app_failed`, `import_job_finished`, and
 fields `jobId`, `steamId`, `appId`, `error`.
 
-## Phase 3: HTTP changes
+## Phase 3: HTTP changes ✅ complete
+
+_Done differently:_
+
+- Steps 2-4 below live in `Importer.RequestImport`, behind a mutex, so two
+  POSTs at once can't both create a job.
+- `Handler` takes an `ImportRequester` interface, which `*importer.Importer`
+  satisfies, so handler tests can use a fake.
+- The import job JSON uses camelCase, with `null` for unset `error`,
+  `startedAt` and `finishedAt`. `steamUser` keeps the sqlc model's
+  snake_case tags.
 
 ### `POST /api/steamuser`
 
@@ -283,7 +319,12 @@ a mutex closes the gap.
   `internal/api/handler.go`. They move into the importer.
 - `internalError` logs through `logger.Event("unhandled_error", ...)`.
 
-## Phase 4: wiring
+## Phase 4: wiring ✅ complete
+
+_Done differently:_ `Start` gets `context.Background()` rather than the
+signal context, so the worker isn't cancelled while the HTTP server is still
+draining. `importer.Shutdown` stops it explicitly after `server.Shutdown`,
+and it's also deferred for the error paths.
 
 - **`internal/httpserver/app.go`:** add `Importer` to `Options`, pass it to
   `api.NewHandler`, and register `GET /api/import-jobs/{id}`.

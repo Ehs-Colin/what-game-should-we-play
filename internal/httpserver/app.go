@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/api"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/importer"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/logging"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/steamapi"
 )
@@ -22,6 +23,7 @@ type Options struct {
 	TrustedProxyHops int
 	SteamApiKey      string
 	SteamClient      *steamapi.Client
+	Importer         *importer.Importer
 }
 
 type Application struct {
@@ -42,11 +44,12 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	dynamicMux := http.NewServeMux()
 
 	apiStore := api.NewStore(database, options.SteamApiKey, options.SteamClient)
-	apiHandler := api.NewHandler(apiStore)
+	apiHandler := api.NewHandler(apiStore, options.Importer, logger)
 	//dynamicMux.HandleFunc("GET /api/steamuser/{id}", apiHandler.GetSteamUserById)
 	//dynamicMux.HandleFunc("GET /api/steamuser/{name}", apiHandler.GetSteamUserByName)
 	//dynamicMux.HandleFunc("GET /api/steamusers", apiHandler.GetSteamUsers)
 	dynamicMux.HandleFunc("POST /api/steamuser", apiHandler.InsertSteamUser)
+	dynamicMux.HandleFunc("GET /api/import-jobs/{id}", apiHandler.GetImportJob)
 
 	// dynamicHandler := applyMiddleware(
 	// 	dynamicMux,

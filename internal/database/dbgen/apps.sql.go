@@ -8,6 +8,7 @@ package dbgen
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const createApp = `-- name: CreateApp :one
@@ -334,8 +335,8 @@ INSERT INTO apps (
     $15,
     $16,
     $17,
-    NOW(),
-    NOW()
+    $18,
+    $18
 )
 ON CONFLICT (steam_appid) DO UPDATE SET
     name = EXCLUDED.name,
@@ -354,8 +355,7 @@ ON CONFLICT (steam_appid) DO UPDATE SET
     platform_linux = EXCLUDED.platform_linux,
     release_date = EXCLUDED.release_date,
     release_coming_soon = EXCLUDED.release_coming_soon,
-    updated_at = NOW(),
-    created_at = NOW()
+    updated_at = EXCLUDED.updated_at
 RETURNING steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_coming_soon, created_at, updated_at
 `
 
@@ -377,6 +377,7 @@ type UpsertAppParams struct {
 	PlatformLinux        sql.NullBool   `json:"platform_linux"`
 	ReleaseDate          sql.NullString `json:"release_date"`
 	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
+	UpdatedAt            time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) UpsertApp(ctx context.Context, arg UpsertAppParams) (App, error) {
@@ -398,6 +399,7 @@ func (q *Queries) UpsertApp(ctx context.Context, arg UpsertAppParams) (App, erro
 		arg.PlatformLinux,
 		arg.ReleaseDate,
 		arg.ReleaseComingSoon,
+		arg.UpdatedAt,
 	)
 	var i App
 	err := row.Scan(

@@ -66,6 +66,20 @@ type Genre struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
+type ImportJob struct {
+	ID            int64          `json:"id"`
+	SteamID       int64          `json:"steam_id"`
+	Status        string         `json:"status"`
+	TotalApps     int32          `json:"total_apps"`
+	ProcessedApps int32          `json:"processed_apps"`
+	SkippedApps   int32          `json:"skipped_apps"`
+	FailedApps    int32          `json:"failed_apps"`
+	Error         sql.NullString `json:"error"`
+	CreatedAt     time.Time      `json:"created_at"`
+	StartedAt     sql.NullTime   `json:"started_at"`
+	FinishedAt    sql.NullTime   `json:"finished_at"`
+}
+
 type SteamUser struct {
 	SteamID   int64     `json:"steam_id"`
 	Name      string    `json:"name"`
@@ -76,6 +90,7 @@ type SteamUser struct {
 type SteamUserApp struct {
 	SteamID   int64     `json:"steam_id"`
 	AppID     int32     `json:"app_id"`
+	Removed   bool      `json:"removed"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
