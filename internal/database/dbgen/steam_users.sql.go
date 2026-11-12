@@ -65,6 +65,25 @@ func (q *Queries) GetSteamUser(ctx context.Context, steamID int64) (SteamUser, e
 	return i, err
 }
 
+const getSteamUserByName = `-- name: GetSteamUserByName :one
+SELECT steam_id, name, created_at, updated_at FROM steam_users
+WHERE lower(name) = lower($1)
+ORDER BY updated_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetSteamUserByName(ctx context.Context, name string) (SteamUser, error) {
+	row := q.db.QueryRowContext(ctx, getSteamUserByName, name)
+	var i SteamUser
+	err := row.Scan(
+		&i.SteamID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateSteamUser = `-- name: UpdateSteamUser :one
 UPDATE steam_users SET
     name = $2,

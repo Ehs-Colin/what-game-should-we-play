@@ -169,7 +169,25 @@ func (handler *Handler) GetSteamUserById(responseWriter http.ResponseWriter, req
 }
 
 func (handler *Handler) GetSteamUserByName(responseWriter http.ResponseWriter, request *http.Request) {
+	name := strings.TrimSpace(request.URL.Query().Get("name"))
+	if name == "" {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "name is required")
+		return
+	}
 
+	steamUser, err := handler.apiStore.queries.GetSteamUserByName(request.Context(), name)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.RespondWithError(responseWriter, http.StatusNotFound, "steam user not found")
+		return
+	}
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{
+		"steamUser": steamUser,
+	})
 }
 
 func (handler *Handler) GetSteamUsers(responseWriter http.ResponseWriter, request *http.Request) {

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Steam Decision Engine</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <main class="card">
+            <header class="card__header">
+                <p class="eyebrow">Steam Decision Engine</p>
+                <h1>What game should we play?</h1>
+                <p class="lede">
+                    Look up a Steam user by their vanity name to get started.
+                </p>
+            </header>
+
+            <form id="lookup-form" class="lookup" novalidate>
+                <label for="steam-name">Steam name</label>
+                <div class="lookup__row">
+                    <input
+                        id="steam-name"
+                        name="steamName"
+                        type="text"
+                        placeholder="e.g. gaben"
+                        autocomplete="off"
+                        spellcheck="false"
+                        required
+                    />
+                    <button id="lookup-button" type="submit">Look up</button>
+                </div>
+                <p class="hint">Enter the part after steamcommunity.com/id/</p>
+            </form>
+
+            <p id="status" class="status" role="status" aria-live="polite"></p>
+
+            <section id="result" class="panel" hidden aria-labelledby="result-title">
+                <h2 id="result-title" class="section-title">Steam user</h2>
+                <dl class="details">
+                    <div class="details__row">
+                        <dt>Name</dt>
+                        <dd id="result-name"></dd>
+                    </div>
+                    <div class="details__row">
+                        <dt>Steam ID</dt>
+                        <dd><output id="steam-id"></output></dd>
+                    </div>
+                    <div class="details__row">
+                        <dt>Source</dt>
+                        <dd id="result-source"></dd>
+                    </div>
+                </dl>
+            </section>
+
+            <section id="job" class="panel" hidden aria-labelledby="job-title">
+                <h2 id="job-title" class="section-title">Library import</h2>
+                <p id="job-status" class="job__status"></p>
+                <dl class="details">
+                    <div class="details__row">
+                        <dt>Progress</dt>
+                        <dd id="job-progress"></dd>
+                    </div>
+                    <div class="details__row">
+                        <dt>Skipped</dt>
+                        <dd id="job-skipped"></dd>
+                    </div>
+                    <div class="details__row">
+                        <dt>Failed</dt>
+                        <dd id="job-failed"></dd>
+                    </div>
+                </dl>
+                <p id="job-error" class="error" hidden></p>
+            </section>
+        </main>
+
+        <script src="app.js" defer></script>
+    </body>
+</html>

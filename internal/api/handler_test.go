@@ -26,11 +26,15 @@ const (
 )
 
 type fakeResolver struct {
-	ids map[string]int64
-	err error
+	ids   map[string]int64
+	err   error
+	calls *int
 }
 
 func (f fakeResolver) ResolveVanityURL(_ context.Context, vanityUrl string) (*steamapi.VanityUrl, error) {
+	if f.calls != nil {
+		(*f.calls)++
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -45,6 +49,7 @@ func (f fakeResolver) ResolveVanityURL(_ context.Context, vanityUrl string) (*st
 }
 
 type handlerEnv struct {
+	db      *sql.DB
 	queries *dbgen.Queries
 	mux     *http.ServeMux
 }
@@ -59,8 +64,9 @@ func newHandlerEnv(t *testing.T, resolver fakeResolver) *handlerEnv {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/steamuser", handler.InsertSteamUser)
+	mux.HandleFunc("GET /api/steamusers", handler.GetSteamUserByName)
 	mux.HandleFunc("GET /api/import-jobs/{id}", handler.GetImportJob)
-	return &handlerEnv{queries: dbgen.New(db), mux: mux}
+	return &handlerEnv{db: db, queries: dbgen.New(db), mux: mux}
 }
 
 func defaultResolver() fakeResolver {
@@ -240,5 +246,131 @@ func TestGetImportJob(t *testing.T) {
 	}
 	if code := env.do(t, http.MethodGet, "/api/import-jobs/999999", "").Code; code != http.StatusNotFound {
 		t.Fatalf("unknown ID: status = %d, want 404", code)
+	}
+}
+
+func seedSteamUser(t *testing.T, env *handlerEnv, steamID int64, name string) {
+	t.Helper()
+	if _, err := env.queries.CreateSteamUser(context.Background(), dbgen.CreateSteamUserParams{
+		SteamID: steamID,
+		Name:    name,
+	}); err != nil {
+		t.Fatalf("create steam user: %v", err)
+	}
+}
+
+func TestGetSteamUserByNameFound(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	seedSteamUser(t, env, testSteamID, testVanity)
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name="+testVanity, "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var body struct {
+		SteamUser dbgen.SteamUser `json:"steamUser"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response %q: %v", recorder.Body.String(), err)
+	}
+	if body.SteamUser.SteamID != testSteamID {
+		t.Fatalf("steam_id = %d, want %d", body.SteamUser.SteamID, testSteamID)
+	}
+	if body.SteamUser.Name != testVanity {
+		t.Fatalf("name = %q, want %q", body.SteamUser.Name, testVanity)
+	}
+}
+
+func TestGetSteamUserByNameIsCaseInsensitive(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	seedSteamUser(t, env, testSteamID, "SomePlayer")
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name=someplayer", "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"name":"SomePlayer"`) {
+		t.Fatalf("unexpected body: %s", recorder.Body.String())
+	}
+}
+
+func TestGetSteamUserByNameReturnsNewestMatch(t *testing.T) {
+	const (
+		olderSteamID = int64(76561198000000002)
+		newerSteamID = int64(76561198000000003)
+	)
+	env := newHandlerEnv(t, defaultResolver())
+	seedSteamUser(t, env, olderSteamID, "SomePlayer")
+	seedSteamUser(t, env, newerSteamID, "someplayer")
+
+	ctx := context.Background()
+	if _, err := env.db.ExecContext(ctx, "UPDATE steam_users SET updated_at = $1 WHERE steam_id = $2", time.Now().Add(-time.Hour), olderSteamID); err != nil {
+		t.Fatalf("age older user: %v", err)
+	}
+	if _, err := env.db.ExecContext(ctx, "UPDATE steam_users SET updated_at = $1 WHERE steam_id = $2", time.Now(), newerSteamID); err != nil {
+		t.Fatalf("refresh newer user: %v", err)
+	}
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name=SOMEPLAYER", "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var body struct {
+		SteamUser dbgen.SteamUser `json:"steamUser"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response %q: %v", recorder.Body.String(), err)
+	}
+	if body.SteamUser.SteamID != newerSteamID {
+		t.Fatalf("steam_id = %d, want newest %d", body.SteamUser.SteamID, newerSteamID)
+	}
+}
+
+func TestGetSteamUserByNameNotFound(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name=nobody", "")
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (%s)", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "steam user not found") {
+		t.Fatalf("unexpected body: %s", recorder.Body.String())
+	}
+}
+
+func TestGetSteamUserByNameRequiresName(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+
+	for _, path := range []string{
+		"/api/steamusers",
+		"/api/steamusers?name=",
+		"/api/steamusers?name=%20",
+		"/api/steamusers?name=+++",
+	} {
+		t.Run(path, func(t *testing.T) {
+			recorder := env.do(t, http.MethodGet, path, "")
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (%s)", recorder.Code, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), "name is required") {
+				t.Fatalf("unexpected body: %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestGetSteamUserByNameDoesNotCallSteam(t *testing.T) {
+	calls := 0
+	env := newHandlerEnv(t, fakeResolver{calls: &calls})
+	seedSteamUser(t, env, testSteamID, testVanity)
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name="+testVanity, "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body.String())
+	}
+	if calls != 0 {
+		t.Fatalf("ResolveVanityURL called %d time(s), want 0", calls)
 	}
 }

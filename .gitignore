@@ -2,3 +2,4 @@
 .cmds*
 opencode.jsonc
 .opencode*
+data/*.log

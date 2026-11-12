@@ -1,6 +1,12 @@
 -- name: GetSteamUser :one
 SELECT * FROM steam_users WHERE steam_id = $1 LIMIT 1;
 
+-- name: GetSteamUserByName :one
+SELECT * FROM steam_users
+WHERE lower(name) = lower(sqlc.arg(name))
+ORDER BY updated_at DESC
+LIMIT 1;
+
 -- name: CreateSteamUser :one
 INSERT INTO steam_users (
     steam_id,

@@ -49,7 +49,13 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	//dynamicMux.HandleFunc("GET /api/steamuser/{name}", apiHandler.GetSteamUserByName)
 	//dynamicMux.HandleFunc("GET /api/steamusers", apiHandler.GetSteamUsers)
 	dynamicMux.HandleFunc("POST /api/steamuser", apiHandler.InsertSteamUser)
+	dynamicMux.HandleFunc("GET /api/steamusers", apiHandler.GetSteamUserByName)
 	dynamicMux.HandleFunc("GET /api/import-jobs/{id}", apiHandler.GetImportJob)
+
+	// Serve the static front end. The API patterns above are more specific, so
+	// they take precedence over this catch-all.
+	fileServer := http.FileServer(http.FS(publicRoot.FS()))
+	dynamicMux.Handle("GET /", fileServer)
 
 	// dynamicHandler := applyMiddleware(
 	// 	dynamicMux,
