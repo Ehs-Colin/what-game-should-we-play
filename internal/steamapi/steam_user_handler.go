@@ -3,7 +3,6 @@ package steamapi
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 )
@@ -17,9 +16,6 @@ func (client *Client) ResolveVanityURL(ctx context.Context, vanityUrl string) (*
 	values.Add("key", client.steamApiKey)
 	values.Add("vanityurl", vanityUrl)
 	url.RawQuery = values.Encode()
-
-	fmt.Printf("Steam API Key: %s\n", client.steamApiKey)
-	fmt.Printf("Resolving vanity URL: %s\n", url.String())
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
 	if err != nil {

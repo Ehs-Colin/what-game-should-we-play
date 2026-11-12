@@ -23,7 +23,6 @@ func (client *Client) GetAppDetail(ctx context.Context, appID int) (*AppDetail, 
 	params.Set("appids", strconv.Itoa(appID))
 	reqURL := SteamStoreURL + "?" + params.Encode()
 
-	fmt.Printf("Getting details on App from URL: %v\n", reqURL)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create GetAppDetail request: %v", err)
