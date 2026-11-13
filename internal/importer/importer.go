@@ -34,6 +34,7 @@ const (
 // SteamClient is the subset of *steamapi.Client the importer uses.
 type SteamClient interface {
 	GetOwnedGames(ctx context.Context, steamID int64) (*steamapi.OwnedGamesResponse, error)
+	GetWishlistItems(ctx context.Context, steamID string) ([]steamapi.WishlistItem, error)
 	GetAppDetail(ctx context.Context, appID int) (*steamapi.AppDetail, error)
 }
 
@@ -166,7 +167,8 @@ func (importer *Importer) work(ctx context.Context) {
 }
 
 type jobCounts struct {
-	total, processed, skipped, failed int32
+	total, processed, skipped, failed                                 int32
+	wishlistTotal, wishlistProcessed, wishlistSkipped, wishlistFailed int32
 }
 
 func (importer *Importer) runJob(ctx context.Context, jobID int64) {
@@ -204,14 +206,21 @@ func (importer *Importer) runJob(ctx context.Context, jobID int64) {
 
 	ownedIDs := uniqueAppIDs(owned.Response.Games)
 	counts.total = int32(len(ownedIDs))
-	importer.updateProgress(ctx, jobID, counts)
+	if err := importer.updateProgress(ctx, jobID, counts); err != nil {
+		if ctx.Err() != nil {
+			importer.log("import_job_interrupted", fields)
+			return
+		}
+		importer.fail(ctx, jobID, counts, fmt.Errorf("update progress: %w", err))
+		return
+	}
 
 	for i, ownedID := range ownedIDs {
 		if ctx.Err() != nil {
 			importer.log("import_job_interrupted", fields)
 			return
 		}
-		switch importer.importApp(ctx, jobID, steamID, ownedID) {
+		switch importer.importOwnedApp(ctx, jobID, steamID, ownedID) {
 		case resultProcessed:
 			counts.processed++
 		case resultSkipped:
@@ -223,7 +232,14 @@ func (importer *Importer) runJob(ctx context.Context, jobID int64) {
 			return
 		}
 		if (i+1)%progressEvery == 0 {
-			importer.updateProgress(ctx, jobID, counts)
+			if err := importer.updateProgress(ctx, jobID, counts); err != nil {
+				if ctx.Err() != nil {
+					importer.log("import_job_interrupted", fields)
+					return
+				}
+				importer.fail(ctx, jobID, counts, fmt.Errorf("update progress: %w", err))
+				return
+			}
 		}
 	}
 
@@ -242,18 +258,108 @@ func (importer *Importer) runJob(ctx context.Context, jobID int64) {
 		}
 	}
 
+	if err := importer.importWishlist(ctx, jobID, steamID, &counts); err != nil {
+		if ctx.Err() != nil {
+			importer.log("import_job_interrupted", fields)
+			return
+		}
+		importer.fail(ctx, jobID, counts, err)
+		return
+	}
+
 	if err := importer.finish(ctx, jobID, StatusSucceeded, counts, sql.NullString{}); err != nil {
 		importer.log("import_job_failed", withError(fields, err))
 		return
 	}
 	importer.log("import_job_finished", map[string]any{
-		"jobId":         jobID,
-		"steamId":       steamID,
-		"totalApps":     counts.total,
-		"processedApps": counts.processed,
-		"skippedApps":   counts.skipped,
-		"failedApps":    counts.failed,
+		"jobId":                 jobID,
+		"steamId":               steamID,
+		"totalApps":             counts.total,
+		"processedApps":         counts.processed,
+		"skippedApps":           counts.skipped,
+		"failedApps":            counts.failed,
+		"wishlistTotalApps":     counts.wishlistTotal,
+		"wishlistProcessedApps": counts.wishlistProcessed,
+		"wishlistSkippedApps":   counts.wishlistSkipped,
+		"wishlistFailedApps":    counts.wishlistFailed,
 	})
+}
+
+// importWishlist stores the user's wishlist after the owned library. Wishlist
+// fetch failures never fail the job: a private wishlist is recorded on the user
+// and other errors are logged. A successful empty wishlist marks nothing
+// removed, mirroring the empty-library rule.
+func (importer *Importer) importWishlist(ctx context.Context, jobID, steamID int64, counts *jobCounts) error {
+	fields := map[string]any{"jobId": jobID, "steamId": steamID}
+
+	items, err := importer.steam.GetWishlistItems(ctx, strconv.FormatInt(steamID, 10))
+	if errors.Is(err, steamapi.ErrWishlistPrivate) {
+		if err := importer.setWishlistPrivate(ctx, steamID, true); err != nil {
+			return err
+		}
+		importer.log("wishlist_private", fields)
+		return nil
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		importer.log("wishlist_fetch_failed", withError(fields, err))
+		return nil
+	}
+
+	if err := importer.setWishlistPrivate(ctx, steamID, false); err != nil {
+		return err
+	}
+
+	unique := uniqueWishlistItems(items)
+	counts.wishlistTotal = int32(len(unique))
+	if err := importer.updateProgress(ctx, jobID, *counts); err != nil {
+		return fmt.Errorf("update progress: %w", err)
+	}
+
+	wishlistIDs := make([]int32, 0, len(unique))
+	for i, item := range unique {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		wishlistIDs = append(wishlistIDs, int32(item.AppID))
+		switch importer.importWishlistApp(ctx, jobID, steamID, item) {
+		case resultProcessed:
+			counts.wishlistProcessed++
+		case resultSkipped:
+			counts.wishlistSkipped++
+		case resultFailed:
+			counts.wishlistFailed++
+		case resultCancelled:
+			return ctx.Err()
+		}
+		if (i+1)%progressEvery == 0 {
+			if err := importer.updateProgress(ctx, jobID, *counts); err != nil {
+				return fmt.Errorf("update progress: %w", err)
+			}
+		}
+	}
+
+	if len(unique) > 0 {
+		if err := importer.queries.MarkSteamUserWishlistAppsRemoved(ctx, dbgen.MarkSteamUserWishlistAppsRemovedParams{
+			SteamID:     steamID,
+			WishlistIds: wishlistIDs,
+		}); err != nil {
+			return fmt.Errorf("mark removed wishlist apps: %w", err)
+		}
+	}
+	return nil
+}
+
+func (importer *Importer) setWishlistPrivate(ctx context.Context, steamID int64, private bool) error {
+	if err := importer.queries.UpdateSteamUserWishlistPrivate(ctx, dbgen.UpdateSteamUserWishlistPrivateParams{
+		SteamID:         steamID,
+		WishlistPrivate: private,
+	}); err != nil {
+		return fmt.Errorf("update wishlist privacy: %w", err)
+	}
+	return nil
 }
 
 type appResult int
@@ -265,26 +371,18 @@ const (
 	resultCancelled
 )
 
-func (importer *Importer) importApp(ctx context.Context, jobID, steamID int64, ownedID int32) appResult {
-	fields := map[string]any{"jobId": jobID, "steamId": steamID, "appId": ownedID}
-
-	// If two owned IDs map to the same app, the second lookup finds the row
-	// saved by the first, so the app is only fetched once.
-	existing, err := importer.queries.GetAppByAlias(ctx, ownedID)
+func (importer *Importer) ensureApp(ctx context.Context, fields map[string]any, appID int32) appResult {
+	// If two IDs map to the same app, the second lookup finds the row saved by
+	// the first, so the app is only fetched once.
+	existing, err := importer.queries.GetAppByAlias(ctx, appID)
 	switch {
 	case err == nil && importer.now().Sub(existing.UpdatedAt) < importer.refreshInterval:
-		if err := importer.queries.AddSteamUserApp(ctx, dbgen.AddSteamUserAppParams{
-			SteamID: steamID,
-			AppID:   ownedID,
-		}); err != nil {
-			return importer.appFailed(ctx, fields, fmt.Errorf("link fresh app: %w", err))
-		}
 		return resultProcessed
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
 		return importer.appFailed(ctx, fields, fmt.Errorf("look up app: %w", err))
 	}
 
-	detail, err := importer.fetchAppDetail(ctx, fields, ownedID)
+	detail, err := importer.fetchAppDetail(ctx, fields, appID)
 	if err != nil {
 		if errors.Is(err, steamapi.ErrAppNotFound) {
 			importer.log("import_app_skipped", withError(fields, err))
@@ -293,8 +391,45 @@ func (importer *Importer) importApp(ctx context.Context, jobID, steamID int64, o
 		return importer.appFailed(ctx, fields, err)
 	}
 
-	if err := importer.saveApp(ctx, steamID, ownedID, detail); err != nil {
+	if err := importer.saveAppDetails(ctx, appID, detail); err != nil {
 		return importer.appFailed(ctx, fields, fmt.Errorf("save app: %w", err))
+	}
+	return resultProcessed
+}
+
+func (importer *Importer) importOwnedApp(ctx context.Context, jobID, steamID int64, ownedID int32) appResult {
+	fields := map[string]any{"jobId": jobID, "steamId": steamID, "appId": ownedID}
+
+	if result := importer.ensureApp(ctx, fields, ownedID); result != resultProcessed {
+		return result
+	}
+	if err := importer.queries.AddSteamUserApp(ctx, dbgen.AddSteamUserAppParams{
+		SteamID: steamID,
+		AppID:   ownedID,
+	}); err != nil {
+		return importer.appFailed(ctx, fields, fmt.Errorf("link owned app: %w", err))
+	}
+	return resultProcessed
+}
+
+func (importer *Importer) importWishlistApp(ctx context.Context, jobID, steamID int64, item steamapi.WishlistItem) appResult {
+	appID := int32(item.AppID)
+	fields := map[string]any{
+		"jobId":   jobID,
+		"steamId": steamID,
+		"appId":   appID,
+		"source":  "wishlist",
+	}
+
+	if result := importer.ensureApp(ctx, fields, appID); result != resultProcessed {
+		return result
+	}
+	if err := importer.queries.AddSteamUserWishlistApp(ctx, dbgen.AddSteamUserWishlistAppParams{
+		SteamID:   steamID,
+		AppID:     appID,
+		DateAdded: wishlistDateAdded(item.DateAdded),
+	}); err != nil {
+		return importer.appFailed(ctx, fields, fmt.Errorf("link wishlist app: %w", err))
 	}
 	return resultProcessed
 }
@@ -324,20 +459,24 @@ func (importer *Importer) fetchAppDetail(ctx context.Context, fields map[string]
 			delay = rateLimitErr.RetryAfter
 		}
 		backoff *= 2
-		importer.log("import_app_rate_limited", map[string]any{
+		rateLimitFields := map[string]any{
 			"jobId":   fields["jobId"],
 			"steamId": fields["steamId"],
 			"appId":   ownedID,
 			"attempt": attempt + 1,
 			"delay":   delay.String(),
-		})
+		}
+		if source, ok := fields["source"]; ok {
+			rateLimitFields["source"] = source
+		}
+		importer.log("import_app_rate_limited", rateLimitFields)
 		if err := sleep(ctx, delay); err != nil {
 			return nil, err
 		}
 	}
 }
 
-func (importer *Importer) saveApp(ctx context.Context, steamID int64, ownedID int32, detail *steamapi.AppDetail) (err error) {
+func (importer *Importer) saveAppDetails(ctx context.Context, ownedID int32, detail *steamapi.AppDetail) (err error) {
 	canonicalID := int32(detail.Data.AppID)
 	if canonicalID == 0 {
 		canonicalID = ownedID
@@ -376,13 +515,6 @@ func (importer *Importer) saveApp(ctx context.Context, steamID int64, ownedID in
 	}
 	if err = replaceGenres(ctx, queries, canonicalID, detail.Data.Genres); err != nil {
 		return err
-	}
-
-	if err = queries.AddSteamUserApp(ctx, dbgen.AddSteamUserAppParams{
-		SteamID: steamID,
-		AppID:   ownedID,
-	}); err != nil {
-		return fmt.Errorf("link user app %d: %w", ownedID, err)
 	}
 
 	return tx.Commit()
@@ -480,16 +612,18 @@ func (importer *Importer) appFailed(ctx context.Context, fields map[string]any, 
 	return resultFailed
 }
 
-func (importer *Importer) updateProgress(ctx context.Context, jobID int64, counts jobCounts) {
-	if err := importer.queries.UpdateImportJobProgress(ctx, dbgen.UpdateImportJobProgressParams{
-		TotalApps:     counts.total,
-		ProcessedApps: counts.processed,
-		SkippedApps:   counts.skipped,
-		FailedApps:    counts.failed,
-		ID:            jobID,
-	}); err != nil && ctx.Err() == nil {
-		importer.log("import_progress_failed", map[string]any{"jobId": jobID, "error": err.Error()})
-	}
+func (importer *Importer) updateProgress(ctx context.Context, jobID int64, counts jobCounts) error {
+	return importer.queries.UpdateImportJobProgress(ctx, dbgen.UpdateImportJobProgressParams{
+		TotalApps:             counts.total,
+		ProcessedApps:         counts.processed,
+		SkippedApps:           counts.skipped,
+		FailedApps:            counts.failed,
+		WishlistTotalApps:     counts.wishlistTotal,
+		WishlistProcessedApps: counts.wishlistProcessed,
+		WishlistSkippedApps:   counts.wishlistSkipped,
+		WishlistFailedApps:    counts.wishlistFailed,
+		ID:                    jobID,
+	})
 }
 
 func (importer *Importer) fail(ctx context.Context, jobID int64, counts jobCounts, cause error) {
@@ -502,14 +636,18 @@ func (importer *Importer) fail(ctx context.Context, jobID int64, counts jobCount
 
 func (importer *Importer) finish(ctx context.Context, jobID int64, status string, counts jobCounts, jobErr sql.NullString) error {
 	_, err := importer.queries.FinishImportJob(ctx, dbgen.FinishImportJobParams{
-		Status:        status,
-		TotalApps:     counts.total,
-		ProcessedApps: counts.processed,
-		SkippedApps:   counts.skipped,
-		FailedApps:    counts.failed,
-		Error:         jobErr,
-		FinishedAt:    sql.NullTime{Time: importer.now(), Valid: true},
-		ID:            jobID,
+		Status:                status,
+		TotalApps:             counts.total,
+		ProcessedApps:         counts.processed,
+		SkippedApps:           counts.skipped,
+		FailedApps:            counts.failed,
+		WishlistTotalApps:     counts.wishlistTotal,
+		WishlistProcessedApps: counts.wishlistProcessed,
+		WishlistSkippedApps:   counts.wishlistSkipped,
+		WishlistFailedApps:    counts.wishlistFailed,
+		Error:                 jobErr,
+		FinishedAt:            sql.NullTime{Time: importer.now(), Valid: true},
+		ID:                    jobID,
 	})
 	return err
 }
@@ -533,6 +671,30 @@ func uniqueAppIDs(games []steamapi.Games) []int32 {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func uniqueWishlistItems(items []steamapi.WishlistItem) []steamapi.WishlistItem {
+	seen := make(map[int32]int, len(items))
+	unique := make([]steamapi.WishlistItem, 0, len(items))
+	for _, item := range items {
+		id := int32(item.AppID)
+		if index, ok := seen[id]; ok {
+			if item.DateAdded > unique[index].DateAdded {
+				unique[index] = item
+			}
+			continue
+		}
+		seen[id] = len(unique)
+		unique = append(unique, item)
+	}
+	return unique
+}
+
+func wishlistDateAdded(seconds int) sql.NullTime {
+	if seconds <= 0 {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: time.Unix(int64(seconds), 0).UTC(), Valid: true}
 }
 
 func withError(fields map[string]any, err error) map[string]any {

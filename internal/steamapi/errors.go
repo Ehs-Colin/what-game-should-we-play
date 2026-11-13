@@ -13,6 +13,11 @@ import (
 // The returned error is a *RateLimitError, which wraps ErrRateLimited.
 var ErrRateLimited = errors.New("rate limited by Steam")
 
+// ErrWishlistPrivate is returned when Steam rejects a wishlist request with
+// 401 or 403. Unlike other endpoints, those statuses mean the wishlist is
+// private rather than that the request was rate limited.
+var ErrWishlistPrivate = errors.New("Steam wishlist is private")
+
 // RateLimitError carries the Retry-After delay Steam sent, if any.
 type RateLimitError struct {
 	StatusCode int
@@ -38,6 +43,24 @@ func checkStatus(resp *http.Response, operation string) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusTooManyRequests, http.StatusForbidden:
+		return fmt.Errorf("%s: %w", operation, &RateLimitError{
+			StatusCode: resp.StatusCode,
+			RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"), time.Now()),
+		})
+	default:
+		return fmt.Errorf("%s returned status %d", operation, resp.StatusCode)
+	}
+}
+
+// checkWishlistStatus returns ErrWishlistPrivate for 401/403 responses, a
+// *RateLimitError for 429 and a generic error for any other non-200 status.
+func checkWishlistStatus(resp *http.Response, operation string) error {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("%s: %w", operation, ErrWishlistPrivate)
+	case http.StatusTooManyRequests:
 		return fmt.Errorf("%s: %w", operation, &RateLimitError{
 			StatusCode: resp.StatusCode,
 			RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"), time.Now()),

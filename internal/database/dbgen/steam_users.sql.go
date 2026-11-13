@@ -20,7 +20,7 @@ INSERT INTO steam_users (
     $2,
     NOW(),
     NOW()
-) RETURNING steam_id, name, created_at, updated_at
+) RETURNING steam_id, name, wishlist_private, created_at, updated_at
 `
 
 type CreateSteamUserParams struct {
@@ -34,6 +34,7 @@ func (q *Queries) CreateSteamUser(ctx context.Context, arg CreateSteamUserParams
 	err := row.Scan(
 		&i.SteamID,
 		&i.Name,
+		&i.WishlistPrivate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -50,7 +51,7 @@ func (q *Queries) DeleteSteamUser(ctx context.Context, steamID int64) error {
 }
 
 const getSteamUser = `-- name: GetSteamUser :one
-SELECT steam_id, name, created_at, updated_at FROM steam_users WHERE steam_id = $1 LIMIT 1
+SELECT steam_id, name, wishlist_private, created_at, updated_at FROM steam_users WHERE steam_id = $1 LIMIT 1
 `
 
 func (q *Queries) GetSteamUser(ctx context.Context, steamID int64) (SteamUser, error) {
@@ -59,6 +60,7 @@ func (q *Queries) GetSteamUser(ctx context.Context, steamID int64) (SteamUser, e
 	err := row.Scan(
 		&i.SteamID,
 		&i.Name,
+		&i.WishlistPrivate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -66,7 +68,7 @@ func (q *Queries) GetSteamUser(ctx context.Context, steamID int64) (SteamUser, e
 }
 
 const getSteamUserByName = `-- name: GetSteamUserByName :one
-SELECT steam_id, name, created_at, updated_at FROM steam_users
+SELECT steam_id, name, wishlist_private, created_at, updated_at FROM steam_users
 WHERE lower(name) = lower($1)
 ORDER BY updated_at DESC
 LIMIT 1
@@ -78,6 +80,7 @@ func (q *Queries) GetSteamUserByName(ctx context.Context, name string) (SteamUse
 	err := row.Scan(
 		&i.SteamID,
 		&i.Name,
+		&i.WishlistPrivate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -88,7 +91,7 @@ const updateSteamUser = `-- name: UpdateSteamUser :one
 UPDATE steam_users SET
     name = $2,
     updated_at = NOW()
-WHERE steam_id = $1 RETURNING steam_id, name, created_at, updated_at
+WHERE steam_id = $1 RETURNING steam_id, name, wishlist_private, created_at, updated_at
 `
 
 type UpdateSteamUserParams struct {
@@ -102,10 +105,28 @@ func (q *Queries) UpdateSteamUser(ctx context.Context, arg UpdateSteamUserParams
 	err := row.Scan(
 		&i.SteamID,
 		&i.Name,
+		&i.WishlistPrivate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const updateSteamUserWishlistPrivate = `-- name: UpdateSteamUserWishlistPrivate :exec
+UPDATE steam_users SET
+    wishlist_private = $1,
+    updated_at = NOW()
+WHERE steam_id = $2
+`
+
+type UpdateSteamUserWishlistPrivateParams struct {
+	WishlistPrivate bool  `json:"wishlist_private"`
+	SteamID         int64 `json:"steam_id"`
+}
+
+func (q *Queries) UpdateSteamUserWishlistPrivate(ctx context.Context, arg UpdateSteamUserWishlistPrivateParams) error {
+	_, err := q.db.ExecContext(ctx, updateSteamUserWishlistPrivate, arg.WishlistPrivate, arg.SteamID)
+	return err
 }
 
 const upsertSteamUser = `-- name: UpsertSteamUser :one
@@ -122,7 +143,7 @@ INSERT INTO steam_users (
 ) ON CONFLICT (steam_id) DO UPDATE SET
     name = $2,
     updated_at = NOW()
-RETURNING steam_id, name, created_at, updated_at
+RETURNING steam_id, name, wishlist_private, created_at, updated_at
 `
 
 type UpsertSteamUserParams struct {
@@ -136,6 +157,7 @@ func (q *Queries) UpsertSteamUser(ctx context.Context, arg UpsertSteamUserParams
 	err := row.Scan(
 		&i.SteamID,
 		&i.Name,
+		&i.WishlistPrivate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

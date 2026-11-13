@@ -32,6 +32,10 @@ UPDATE import_jobs SET
     processed_apps = 0,
     skipped_apps = 0,
     failed_apps = 0,
+    wishlist_total_apps = 0,
+    wishlist_processed_apps = 0,
+    wishlist_skipped_apps = 0,
+    wishlist_failed_apps = 0,
     error = NULL,
     started_at = @started_at,
     finished_at = NULL
@@ -43,7 +47,11 @@ UPDATE import_jobs SET
     total_apps = @total_apps,
     processed_apps = @processed_apps,
     skipped_apps = @skipped_apps,
-    failed_apps = @failed_apps
+    failed_apps = @failed_apps,
+    wishlist_total_apps = @wishlist_total_apps,
+    wishlist_processed_apps = @wishlist_processed_apps,
+    wishlist_skipped_apps = @wishlist_skipped_apps,
+    wishlist_failed_apps = @wishlist_failed_apps
 WHERE id = @id;
 
 -- name: FinishImportJob :one
@@ -53,6 +61,10 @@ UPDATE import_jobs SET
     processed_apps = @processed_apps,
     skipped_apps = @skipped_apps,
     failed_apps = @failed_apps,
+    wishlist_total_apps = @wishlist_total_apps,
+    wishlist_processed_apps = @wishlist_processed_apps,
+    wishlist_skipped_apps = @wishlist_skipped_apps,
+    wishlist_failed_apps = @wishlist_failed_apps,
     error = @error,
     finished_at = @finished_at
 WHERE id = @id

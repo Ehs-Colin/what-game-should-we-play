@@ -44,3 +44,9 @@ RETURNING *;
 
 -- name: DeleteSteamUser :exec
 DELETE FROM steam_users WHERE steam_id = $1;
+
+-- name: UpdateSteamUserWishlistPrivate :exec
+UPDATE steam_users SET
+    wishlist_private = @wishlist_private,
+    updated_at = NOW()
+WHERE steam_id = @steam_id;

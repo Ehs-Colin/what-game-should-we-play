@@ -2,6 +2,7 @@
 CREATE TABLE steam_users (
 	steam_id BIGINT PRIMARY KEY,
 	name VARCHAR(255) NOT NULL,
+	wishlist_private BOOLEAN NOT NULL DEFAULT FALSE,
 	created_at TIMESTAMPTZ NOT NULL,
 	updated_at TIMESTAMPTZ NOT NULL
 );
@@ -84,6 +85,19 @@ CREATE TABLE steam_user_apps (
     FOREIGN KEY (app_id) REFERENCES app_alias(alias_id)
 );
 
+-- app_id is the ID returned by Steam, looked up through app_alias.
+CREATE TABLE steam_user_wishlist (
+    steam_id BIGINT NOT NULL,
+    app_id INT NOT NULL,
+    date_added TIMESTAMPTZ,
+    removed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (steam_id, app_id),
+    FOREIGN KEY (steam_id) REFERENCES steam_users(steam_id),
+    FOREIGN KEY (app_id) REFERENCES app_alias(alias_id)
+);
+
 CREATE TABLE import_jobs (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     steam_id BIGINT NOT NULL,
@@ -92,6 +106,10 @@ CREATE TABLE import_jobs (
     processed_apps INT NOT NULL DEFAULT 0,
     skipped_apps INT NOT NULL DEFAULT 0,   -- not found on Steam
     failed_apps INT NOT NULL DEFAULT 0,
+    wishlist_total_apps INT NOT NULL DEFAULT 0,
+    wishlist_processed_apps INT NOT NULL DEFAULT 0,
+    wishlist_skipped_apps INT NOT NULL DEFAULT 0,
+    wishlist_failed_apps INT NOT NULL DEFAULT 0,
     error TEXT,                            -- set when the whole job fails
     created_at TIMESTAMPTZ NOT NULL,
     started_at TIMESTAMPTZ,
@@ -102,6 +120,7 @@ CREATE INDEX import_jobs_steam_id_status ON import_jobs (steam_id, status);
 
 -- +goose Down
 DROP TABLE import_jobs;
+DROP TABLE steam_user_wishlist;
 DROP TABLE steam_user_apps;
 DROP TABLE app_alias;
 DROP TABLE app_genres;

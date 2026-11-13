@@ -222,7 +222,22 @@ func TestInsertSteamUserBadRequests(t *testing.T) {
 func TestGetImportJob(t *testing.T) {
 	env := newHandlerEnv(t, defaultResolver())
 	_, created := env.postUser(t)
-	env.finishJob(t, created.ImportJob.ID, importer.StatusSucceeded, time.Now())
+	// Give owned and wishlist counters distinct values so the response shows
+	// that they are reported separately.
+	if _, err := env.queries.FinishImportJob(context.Background(), dbgen.FinishImportJobParams{
+		Status:                importer.StatusSucceeded,
+		TotalApps:             3,
+		ProcessedApps:         2,
+		SkippedApps:           1,
+		WishlistTotalApps:     7,
+		WishlistProcessedApps: 5,
+		WishlistSkippedApps:   1,
+		WishlistFailedApps:    1,
+		FinishedAt:            sql.NullTime{Time: time.Now(), Valid: true},
+		ID:                    created.ImportJob.ID,
+	}); err != nil {
+		t.Fatalf("finish job: %v", err)
+	}
 
 	recorder := env.do(t, http.MethodGet, importJobLocation(created.ImportJob.ID), "")
 	if recorder.Code != http.StatusOK {
@@ -232,9 +247,27 @@ func TestGetImportJob(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &fields); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	for _, key := range []string{"status", "totalApps", "processedApps", "skippedApps", "failedApps", "error", "createdAt", "startedAt", "finishedAt"} {
+	for _, key := range []string{
+		"status", "totalApps", "processedApps", "skippedApps", "failedApps",
+		"wishlistTotalApps", "wishlistProcessedApps", "wishlistSkippedApps", "wishlistFailedApps",
+		"error", "createdAt", "startedAt", "finishedAt",
+	} {
 		if _, ok := fields[key]; !ok {
 			t.Errorf("response missing %q: %s", key, recorder.Body.String())
+		}
+	}
+	for key, want := range map[string]float64{
+		"totalApps":             3,
+		"processedApps":         2,
+		"skippedApps":           1,
+		"failedApps":            0,
+		"wishlistTotalApps":     7,
+		"wishlistProcessedApps": 5,
+		"wishlistSkippedApps":   1,
+		"wishlistFailedApps":    1,
+	} {
+		if fields[key] != want {
+			t.Errorf("%s = %v, want %v (%s)", key, fields[key], want, recorder.Body.String())
 		}
 	}
 	if fields["status"] != importer.StatusSucceeded || fields["finishedAt"] == nil || fields["error"] != nil {

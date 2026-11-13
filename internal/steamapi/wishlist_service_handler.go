@@ -7,6 +7,8 @@ import (
 	"net/url"
 )
 
+// GetWishlistItems returns the apps on a user's wishlist. A private or empty
+// wishlist has no "items" field; that is returned as an empty list.
 func (client *Client) GetWishlistItems(ctx context.Context, steamID string) ([]WishlistItem, error) {
 	url, err := url.Parse(IWishlistServiceURL + "GetWishlist/v1/")
 	if err != nil {
@@ -25,9 +27,15 @@ func (client *Client) GetWishlistItems(ctx context.Context, steamID string) ([]W
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var items []WishlistItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+	if err := checkWishlistStatus(resp, "GetWishlistItems"); err != nil {
 		return nil, err
 	}
-	return items, nil
+	var result GetWishlistResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	if result.Response.Items == nil {
+		result.Response.Items = []WishlistItem{}
+	}
+	return result.Response.Items, nil
 }

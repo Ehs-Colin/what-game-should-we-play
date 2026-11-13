@@ -20,7 +20,7 @@ INSERT INTO import_jobs (
     $1,
     'queued',
     $2
-) RETURNING id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, error, created_at, started_at, finished_at
+) RETURNING id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at
 `
 
 type CreateImportJobParams struct {
@@ -39,6 +39,10 @@ func (q *Queries) CreateImportJob(ctx context.Context, arg CreateImportJobParams
 		&i.ProcessedApps,
 		&i.SkippedApps,
 		&i.FailedApps,
+		&i.WishlistTotalApps,
+		&i.WishlistProcessedApps,
+		&i.WishlistSkippedApps,
+		&i.WishlistFailedApps,
 		&i.Error,
 		&i.CreatedAt,
 		&i.StartedAt,
@@ -54,21 +58,29 @@ UPDATE import_jobs SET
     processed_apps = $3,
     skipped_apps = $4,
     failed_apps = $5,
-    error = $6,
-    finished_at = $7
-WHERE id = $8
-RETURNING id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, error, created_at, started_at, finished_at
+    wishlist_total_apps = $6,
+    wishlist_processed_apps = $7,
+    wishlist_skipped_apps = $8,
+    wishlist_failed_apps = $9,
+    error = $10,
+    finished_at = $11
+WHERE id = $12
+RETURNING id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at
 `
 
 type FinishImportJobParams struct {
-	Status        string         `json:"status"`
-	TotalApps     int32          `json:"total_apps"`
-	ProcessedApps int32          `json:"processed_apps"`
-	SkippedApps   int32          `json:"skipped_apps"`
-	FailedApps    int32          `json:"failed_apps"`
-	Error         sql.NullString `json:"error"`
-	FinishedAt    sql.NullTime   `json:"finished_at"`
-	ID            int64          `json:"id"`
+	Status                string         `json:"status"`
+	TotalApps             int32          `json:"total_apps"`
+	ProcessedApps         int32          `json:"processed_apps"`
+	SkippedApps           int32          `json:"skipped_apps"`
+	FailedApps            int32          `json:"failed_apps"`
+	WishlistTotalApps     int32          `json:"wishlist_total_apps"`
+	WishlistProcessedApps int32          `json:"wishlist_processed_apps"`
+	WishlistSkippedApps   int32          `json:"wishlist_skipped_apps"`
+	WishlistFailedApps    int32          `json:"wishlist_failed_apps"`
+	Error                 sql.NullString `json:"error"`
+	FinishedAt            sql.NullTime   `json:"finished_at"`
+	ID                    int64          `json:"id"`
 }
 
 func (q *Queries) FinishImportJob(ctx context.Context, arg FinishImportJobParams) (ImportJob, error) {
@@ -78,6 +90,10 @@ func (q *Queries) FinishImportJob(ctx context.Context, arg FinishImportJobParams
 		arg.ProcessedApps,
 		arg.SkippedApps,
 		arg.FailedApps,
+		arg.WishlistTotalApps,
+		arg.WishlistProcessedApps,
+		arg.WishlistSkippedApps,
+		arg.WishlistFailedApps,
 		arg.Error,
 		arg.FinishedAt,
 		arg.ID,
@@ -91,6 +107,10 @@ func (q *Queries) FinishImportJob(ctx context.Context, arg FinishImportJobParams
 		&i.ProcessedApps,
 		&i.SkippedApps,
 		&i.FailedApps,
+		&i.WishlistTotalApps,
+		&i.WishlistProcessedApps,
+		&i.WishlistSkippedApps,
+		&i.WishlistFailedApps,
 		&i.Error,
 		&i.CreatedAt,
 		&i.StartedAt,
@@ -100,7 +120,7 @@ func (q *Queries) FinishImportJob(ctx context.Context, arg FinishImportJobParams
 }
 
 const getActiveImportJobForUser = `-- name: GetActiveImportJobForUser :one
-SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, error, created_at, started_at, finished_at FROM import_jobs
+SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at FROM import_jobs
 WHERE steam_id = $1 AND status IN ('queued', 'running')
 ORDER BY created_at DESC, id DESC
 LIMIT 1
@@ -117,6 +137,10 @@ func (q *Queries) GetActiveImportJobForUser(ctx context.Context, steamID int64) 
 		&i.ProcessedApps,
 		&i.SkippedApps,
 		&i.FailedApps,
+		&i.WishlistTotalApps,
+		&i.WishlistProcessedApps,
+		&i.WishlistSkippedApps,
+		&i.WishlistFailedApps,
 		&i.Error,
 		&i.CreatedAt,
 		&i.StartedAt,
@@ -126,7 +150,7 @@ func (q *Queries) GetActiveImportJobForUser(ctx context.Context, steamID int64) 
 }
 
 const getImportJob = `-- name: GetImportJob :one
-SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, error, created_at, started_at, finished_at FROM import_jobs WHERE id = $1 LIMIT 1
+SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at FROM import_jobs WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetImportJob(ctx context.Context, id int64) (ImportJob, error) {
@@ -140,6 +164,10 @@ func (q *Queries) GetImportJob(ctx context.Context, id int64) (ImportJob, error)
 		&i.ProcessedApps,
 		&i.SkippedApps,
 		&i.FailedApps,
+		&i.WishlistTotalApps,
+		&i.WishlistProcessedApps,
+		&i.WishlistSkippedApps,
+		&i.WishlistFailedApps,
 		&i.Error,
 		&i.CreatedAt,
 		&i.StartedAt,
@@ -149,7 +177,7 @@ func (q *Queries) GetImportJob(ctx context.Context, id int64) (ImportJob, error)
 }
 
 const getLatestSucceededImportJobForUser = `-- name: GetLatestSucceededImportJobForUser :one
-SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, error, created_at, started_at, finished_at FROM import_jobs
+SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at FROM import_jobs
 WHERE steam_id = $1 AND status = 'succeeded'
 ORDER BY finished_at DESC, id DESC
 LIMIT 1
@@ -166,6 +194,10 @@ func (q *Queries) GetLatestSucceededImportJobForUser(ctx context.Context, steamI
 		&i.ProcessedApps,
 		&i.SkippedApps,
 		&i.FailedApps,
+		&i.WishlistTotalApps,
+		&i.WishlistProcessedApps,
+		&i.WishlistSkippedApps,
+		&i.WishlistFailedApps,
 		&i.Error,
 		&i.CreatedAt,
 		&i.StartedAt,
@@ -175,7 +207,7 @@ func (q *Queries) GetLatestSucceededImportJobForUser(ctx context.Context, steamI
 }
 
 const listUnfinishedImportJobs = `-- name: ListUnfinishedImportJobs :many
-SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, error, created_at, started_at, finished_at FROM import_jobs
+SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at FROM import_jobs
 WHERE status IN ('queued', 'running')
 ORDER BY created_at, id
 `
@@ -197,6 +229,10 @@ func (q *Queries) ListUnfinishedImportJobs(ctx context.Context) ([]ImportJob, er
 			&i.ProcessedApps,
 			&i.SkippedApps,
 			&i.FailedApps,
+			&i.WishlistTotalApps,
+			&i.WishlistProcessedApps,
+			&i.WishlistSkippedApps,
+			&i.WishlistFailedApps,
 			&i.Error,
 			&i.CreatedAt,
 			&i.StartedAt,
@@ -222,11 +258,15 @@ UPDATE import_jobs SET
     processed_apps = 0,
     skipped_apps = 0,
     failed_apps = 0,
+    wishlist_total_apps = 0,
+    wishlist_processed_apps = 0,
+    wishlist_skipped_apps = 0,
+    wishlist_failed_apps = 0,
     error = NULL,
     started_at = $1,
     finished_at = NULL
 WHERE id = $2
-RETURNING id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, error, created_at, started_at, finished_at
+RETURNING id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at
 `
 
 type MarkImportJobRunningParams struct {
@@ -246,6 +286,10 @@ func (q *Queries) MarkImportJobRunning(ctx context.Context, arg MarkImportJobRun
 		&i.ProcessedApps,
 		&i.SkippedApps,
 		&i.FailedApps,
+		&i.WishlistTotalApps,
+		&i.WishlistProcessedApps,
+		&i.WishlistSkippedApps,
+		&i.WishlistFailedApps,
 		&i.Error,
 		&i.CreatedAt,
 		&i.StartedAt,
@@ -259,16 +303,24 @@ UPDATE import_jobs SET
     total_apps = $1,
     processed_apps = $2,
     skipped_apps = $3,
-    failed_apps = $4
-WHERE id = $5
+    failed_apps = $4,
+    wishlist_total_apps = $5,
+    wishlist_processed_apps = $6,
+    wishlist_skipped_apps = $7,
+    wishlist_failed_apps = $8
+WHERE id = $9
 `
 
 type UpdateImportJobProgressParams struct {
-	TotalApps     int32 `json:"total_apps"`
-	ProcessedApps int32 `json:"processed_apps"`
-	SkippedApps   int32 `json:"skipped_apps"`
-	FailedApps    int32 `json:"failed_apps"`
-	ID            int64 `json:"id"`
+	TotalApps             int32 `json:"total_apps"`
+	ProcessedApps         int32 `json:"processed_apps"`
+	SkippedApps           int32 `json:"skipped_apps"`
+	FailedApps            int32 `json:"failed_apps"`
+	WishlistTotalApps     int32 `json:"wishlist_total_apps"`
+	WishlistProcessedApps int32 `json:"wishlist_processed_apps"`
+	WishlistSkippedApps   int32 `json:"wishlist_skipped_apps"`
+	WishlistFailedApps    int32 `json:"wishlist_failed_apps"`
+	ID                    int64 `json:"id"`
 }
 
 func (q *Queries) UpdateImportJobProgress(ctx context.Context, arg UpdateImportJobProgressParams) error {
@@ -277,6 +329,10 @@ func (q *Queries) UpdateImportJobProgress(ctx context.Context, arg UpdateImportJ
 		arg.ProcessedApps,
 		arg.SkippedApps,
 		arg.FailedApps,
+		arg.WishlistTotalApps,
+		arg.WishlistProcessedApps,
+		arg.WishlistSkippedApps,
+		arg.WishlistFailedApps,
 		arg.ID,
 	)
 	return err

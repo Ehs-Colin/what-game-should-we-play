@@ -67,24 +67,29 @@ type Genre struct {
 }
 
 type ImportJob struct {
-	ID            int64          `json:"id"`
-	SteamID       int64          `json:"steam_id"`
-	Status        string         `json:"status"`
-	TotalApps     int32          `json:"total_apps"`
-	ProcessedApps int32          `json:"processed_apps"`
-	SkippedApps   int32          `json:"skipped_apps"`
-	FailedApps    int32          `json:"failed_apps"`
-	Error         sql.NullString `json:"error"`
-	CreatedAt     time.Time      `json:"created_at"`
-	StartedAt     sql.NullTime   `json:"started_at"`
-	FinishedAt    sql.NullTime   `json:"finished_at"`
+	ID                    int64          `json:"id"`
+	SteamID               int64          `json:"steam_id"`
+	Status                string         `json:"status"`
+	TotalApps             int32          `json:"total_apps"`
+	ProcessedApps         int32          `json:"processed_apps"`
+	SkippedApps           int32          `json:"skipped_apps"`
+	FailedApps            int32          `json:"failed_apps"`
+	WishlistTotalApps     int32          `json:"wishlist_total_apps"`
+	WishlistProcessedApps int32          `json:"wishlist_processed_apps"`
+	WishlistSkippedApps   int32          `json:"wishlist_skipped_apps"`
+	WishlistFailedApps    int32          `json:"wishlist_failed_apps"`
+	Error                 sql.NullString `json:"error"`
+	CreatedAt             time.Time      `json:"created_at"`
+	StartedAt             sql.NullTime   `json:"started_at"`
+	FinishedAt            sql.NullTime   `json:"finished_at"`
 }
 
 type SteamUser struct {
-	SteamID   int64     `json:"steam_id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	SteamID         int64     `json:"steam_id"`
+	Name            string    `json:"name"`
+	WishlistPrivate bool      `json:"wishlist_private"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type SteamUserApp struct {
@@ -93,4 +98,13 @@ type SteamUserApp struct {
 	Removed   bool      `json:"removed"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type SteamUserWishlist struct {
+	SteamID   int64        `json:"steam_id"`
+	AppID     int32        `json:"app_id"`
+	DateAdded sql.NullTime `json:"date_added"`
+	Removed   bool         `json:"removed"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }

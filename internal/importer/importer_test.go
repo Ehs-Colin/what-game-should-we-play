@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -32,20 +34,25 @@ type fakeApp struct {
 }
 
 type fakeSteam struct {
-	mu         sync.Mutex
-	owned      map[int64][]int
-	ownedErr   error
-	apps       map[int]fakeApp
-	rateLimits map[int]int   // 429s to return before succeeding
-	appErrs    map[int]error // returned on every call
-	block      map[int]bool  // block until ctx is cancelled
-	calls      map[int]int
-	called     chan int // receives each requested app ID, if set
+	mu              sync.Mutex
+	owned           map[int64][]int
+	ownedErr        error
+	wishlist        map[int64][]steamapi.WishlistItem
+	wishlistErr     error
+	wishlistPrivate bool
+	wishlistCalls   int
+	apps            map[int]fakeApp
+	rateLimits      map[int]int   // 429s to return before succeeding
+	appErrs         map[int]error // returned on every call
+	block           map[int]bool  // block until ctx is cancelled
+	calls           map[int]int
+	called          chan int // receives each requested app ID, if set
 }
 
 func newFakeSteam() *fakeSteam {
 	return &fakeSteam{
 		owned:      map[int64][]int{},
+		wishlist:   map[int64][]steamapi.WishlistItem{},
 		apps:       map[int]fakeApp{},
 		rateLimits: map[int]int{},
 		appErrs:    map[int]error{},
@@ -58,6 +65,12 @@ func (f *fakeSteam) setOwned(steamID int64, ids ...int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.owned[steamID] = ids
+}
+
+func (f *fakeSteam) setWishlist(steamID int64, items ...steamapi.WishlistItem) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.wishlist[steamID] = items
 }
 
 func (f *fakeSteam) setApp(ownedID int, app fakeApp) {
@@ -84,6 +97,23 @@ func (f *fakeSteam) GetOwnedGames(ctx context.Context, steamID int64) (*steamapi
 		response.Response.Games = append(response.Response.Games, steamapi.Games{AppID: id})
 	}
 	return response, nil
+}
+
+func (f *fakeSteam) GetWishlistItems(ctx context.Context, steamID string) ([]steamapi.WishlistItem, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.wishlistCalls++
+	if f.wishlistPrivate {
+		return nil, fmt.Errorf("GetWishlistItems: %w", steamapi.ErrWishlistPrivate)
+	}
+	if f.wishlistErr != nil {
+		return nil, f.wishlistErr
+	}
+	id, err := strconv.ParseInt(steamID, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return f.wishlist[id], nil
 }
 
 func (f *fakeSteam) GetAppDetail(ctx context.Context, appID int) (*steamapi.AppDetail, error) {
@@ -262,6 +292,33 @@ func (env *testEnv) userApp(t *testing.T, steamID int64, ownedID int) (removed b
 	return removed, true
 }
 
+// userWishlist returns a user's wishlist row and whether it exists.
+func (env *testEnv) userWishlist(t *testing.T, steamID int64, appID int) (dbgen.SteamUserWishlist, bool) {
+	t.Helper()
+	var row dbgen.SteamUserWishlist
+	err := env.db.QueryRow(
+		`SELECT steam_id, app_id, date_added, removed, created_at, updated_at
+		 FROM steam_user_wishlist WHERE steam_id = $1 AND app_id = $2`,
+		steamID, appID,
+	).Scan(&row.SteamID, &row.AppID, &row.DateAdded, &row.Removed, &row.CreatedAt, &row.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return dbgen.SteamUserWishlist{}, false
+	}
+	if err != nil {
+		t.Fatalf("query steam_user_wishlist: %v", err)
+	}
+	return row, true
+}
+
+func (env *testEnv) wishlistPrivate(t *testing.T, steamID int64) bool {
+	t.Helper()
+	user, err := env.queries.GetSteamUser(context.Background(), steamID)
+	if err != nil {
+		t.Fatalf("get steam user: %v", err)
+	}
+	return user.WishlistPrivate
+}
+
 func (env *testEnv) categoryIDs(t *testing.T, appID int32) []int32 {
 	t.Helper()
 	categories, err := env.queries.ListCategoriesForApp(context.Background(), appID)
@@ -292,6 +349,23 @@ func (env *testEnv) genreIDs(t *testing.T, appID int32) []int32 {
 
 type wantCounts struct {
 	total, processed, skipped, failed int32
+}
+
+type wantWishlistCounts struct {
+	total, processed, skipped, failed int32
+}
+
+func assertWishlistCounts(t *testing.T, job dbgen.ImportJob, want wantWishlistCounts) {
+	t.Helper()
+	got := wantWishlistCounts{
+		job.WishlistTotalApps,
+		job.WishlistProcessedApps,
+		job.WishlistSkippedApps,
+		job.WishlistFailedApps,
+	}
+	if got != want {
+		t.Fatalf("wishlist counts = %+v, want %+v (error %q)", got, want, job.Error.String)
+	}
 }
 
 func assertJob(t *testing.T, job dbgen.ImportJob, status string, want wantCounts) {
@@ -578,6 +652,386 @@ func TestRemovedGames(t *testing.T) {
 		if removed, _ := env.userApp(t, testSteamID, ownedID); removed {
 			t.Fatalf("empty library marked app %d removed", ownedID)
 		}
+	}
+}
+
+func TestWishlistImport(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 20, DateAdded: 1700000000})
+	env.steam.setApp(20, fakeApp{
+		name:       "Wishlisted Game",
+		categories: []steamapi.Category{{ID: 2, Description: "Single-player"}, {ID: 1, Description: "Multi-player"}},
+		genres:     []steamapi.Genre{{ID: "1", Description: "Action"}},
+	})
+
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{})
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
+
+	ctx := context.Background()
+	app, err := env.queries.GetAppByAlias(ctx, 20)
+	if err != nil || app.SteamAppid != 20 || app.Name.String != "Wishlisted Game" {
+		t.Fatalf("app = %+v, %v", app, err)
+	}
+	alias, err := env.queries.GetAppAlias(ctx, 20)
+	if err != nil || alias.AppID != 20 {
+		t.Fatalf("self-alias = %+v, %v", alias, err)
+	}
+	if got := env.categoryIDs(t, 20); !slices.Equal(got, []int32{1, 2}) {
+		t.Fatalf("categories = %v", got)
+	}
+	if got := env.genreIDs(t, 20); !slices.Equal(got, []int32{1}) {
+		t.Fatalf("genres = %v", got)
+	}
+
+	row, exists := env.userWishlist(t, testSteamID, 20)
+	if !exists || row.Removed || !row.DateAdded.Valid {
+		t.Fatalf("wishlist row = %+v, exists %v", row, exists)
+	}
+	if want := time.Unix(1700000000, 0).UTC(); !row.DateAdded.Time.Equal(want) {
+		t.Fatalf("date_added = %v, want %v", row.DateAdded.Time, want)
+	}
+	if _, exists := env.userApp(t, testSteamID, 20); exists {
+		t.Fatalf("wishlist app should not be linked in steam_user_apps")
+	}
+
+	active, err := env.queries.ListActiveSteamUserWishlist(ctx, testSteamID)
+	if err != nil || len(active) != 1 || active[0].SteamAppid != 20 {
+		t.Fatalf("active wishlist = %+v, %v", active, err)
+	}
+}
+
+func TestWishlistAliasResolvesToCanonicalApp(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 100})
+	env.steam.setApp(100, fakeApp{canonicalID: 80})
+
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{})
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
+
+	ctx := context.Background()
+	for _, aliasID := range []int32{80, 100} {
+		alias, err := env.queries.GetAppAlias(ctx, aliasID)
+		if err != nil || alias.AppID != 80 {
+			t.Fatalf("alias %d = %+v, %v", aliasID, alias, err)
+		}
+	}
+	if _, exists := env.userWishlist(t, testSteamID, 100); !exists {
+		t.Fatalf("wishlist should be linked through Steam ID 100")
+	}
+	if _, exists := env.userWishlist(t, testSteamID, 80); exists {
+		t.Fatalf("wishlist should not be linked through canonical ID 80")
+	}
+	if _, exists := env.userApp(t, testSteamID, 100); exists {
+		t.Fatalf("wishlist app should not be linked in steam_user_apps")
+	}
+}
+
+func TestWishlistOverlapsOwnedApp(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setOwned(testSteamID, 10)
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	env.steam.setApp(10, fakeApp{})
+
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{total: 1, processed: 1})
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
+
+	if _, exists := env.userApp(t, testSteamID, 10); !exists {
+		t.Fatalf("app should stay in steam_user_apps")
+	}
+	if _, exists := env.userWishlist(t, testSteamID, 10); !exists {
+		t.Fatalf("app should also be in steam_user_wishlist")
+	}
+	if got := env.steam.callCount(10); got != 1 {
+		t.Fatalf("GetAppDetail calls = %d, want 1", got)
+	}
+}
+
+func TestFreshWishlistAppIsNotRefetched(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	env.steam.setApp(10, fakeApp{})
+
+	env.runImport(t, testSteamID)
+	env.clock.Advance(testRefreshInterval - time.Minute)
+	job := env.runImport(t, testSteamID)
+
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
+	if got := env.steam.callCount(10); got != 1 {
+		t.Fatalf("GetAppDetail calls = %d, want 1", got)
+	}
+	if _, exists := env.userWishlist(t, testSteamID, 10); !exists {
+		t.Fatalf("fresh app should still be linked to the wishlist")
+	}
+}
+
+func TestStaleWishlistAppIsRefetched(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	env.steam.setApp(10, fakeApp{
+		categories: []steamapi.Category{{ID: 1, Description: "Multi-player"}, {ID: 2, Description: "Single-player"}},
+		genres:     []steamapi.Genre{{ID: "1", Description: "Action"}},
+	})
+	env.runImport(t, testSteamID)
+
+	env.steam.setApp(10, fakeApp{
+		categories: []steamapi.Category{{ID: 3, Description: "Co-op"}},
+		genres:     []steamapi.Genre{{ID: "2", Description: "Strategy"}},
+	})
+	env.clock.Advance(testRefreshInterval)
+	job := env.runImport(t, testSteamID)
+
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
+	if got := env.steam.callCount(10); got != 2 {
+		t.Fatalf("GetAppDetail calls = %d, want 2", got)
+	}
+	if got := env.categoryIDs(t, 10); !slices.Equal(got, []int32{3}) {
+		t.Fatalf("categories = %v, want [3]", got)
+	}
+	if got := env.genreIDs(t, 10); !slices.Equal(got, []int32{2}) {
+		t.Fatalf("genres = %v, want [2]", got)
+	}
+}
+
+func TestWishlistAppNotFoundIsSkipped(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 999})
+
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{})
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, skipped: 1})
+	if _, exists := env.userWishlist(t, testSteamID, 999); exists {
+		t.Fatalf("a missing app should not be linked to the wishlist")
+	}
+}
+
+func TestDuplicateWishlistItemsFetchedOnce(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setWishlist(testSteamID,
+		steamapi.WishlistItem{AppID: 10, DateAdded: 100},
+		steamapi.WishlistItem{AppID: 10, DateAdded: 200},
+	)
+	env.steam.setApp(10, fakeApp{})
+
+	job := env.runImport(t, testSteamID)
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
+	if got := env.steam.callCount(10); got != 1 {
+		t.Fatalf("GetAppDetail calls = %d, want 1", got)
+	}
+	row, exists := env.userWishlist(t, testSteamID, 10)
+	if !exists || !row.DateAdded.Valid {
+		t.Fatalf("wishlist row = %+v, exists %v", row, exists)
+	}
+	if want := time.Unix(200, 0).UTC(); !row.DateAdded.Time.Equal(want) {
+		t.Fatalf("date_added = %v, want the largest value %v", row.DateAdded.Time, want)
+	}
+}
+
+func TestRemovedWishlistItems(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setApp(10, fakeApp{})
+	env.steam.setApp(11, fakeApp{})
+
+	env.steam.setWishlist(testSteamID,
+		steamapi.WishlistItem{AppID: 10},
+		steamapi.WishlistItem{AppID: 11},
+	)
+	env.runImport(t, testSteamID)
+
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	env.runImport(t, testSteamID)
+	if row, _ := env.userWishlist(t, testSteamID, 11); !row.Removed {
+		t.Fatalf("wishlist app 11 should be marked removed")
+	}
+	if row, _ := env.userWishlist(t, testSteamID, 10); row.Removed {
+		t.Fatalf("wishlist app 10 should not be marked removed")
+	}
+	active, err := env.queries.ListActiveSteamUserWishlist(context.Background(), testSteamID)
+	if err != nil || len(active) != 1 || active[0].SteamAppid != 10 {
+		t.Fatalf("active wishlist = %+v, %v", active, err)
+	}
+
+	env.steam.setWishlist(testSteamID,
+		steamapi.WishlistItem{AppID: 10},
+		steamapi.WishlistItem{AppID: 11},
+	)
+	env.runImport(t, testSteamID)
+	if row, _ := env.userWishlist(t, testSteamID, 11); row.Removed {
+		t.Fatalf("re-added wishlist app 11 should no longer be removed")
+	}
+}
+
+func TestEmptyWishlistDoesNotRemoveItems(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setApp(10, fakeApp{})
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	env.runImport(t, testSteamID)
+
+	env.steam.setWishlist(testSteamID)
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{})
+	assertWishlistCounts(t, job, wantWishlistCounts{})
+
+	if row, exists := env.userWishlist(t, testSteamID, 10); !exists || row.Removed {
+		t.Fatalf("empty wishlist should not mark rows removed: %+v, exists %v", row, exists)
+	}
+}
+
+func TestPrivateWishlist(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setOwned(testSteamID, 10)
+	env.steam.setApp(10, fakeApp{})
+	env.steam.setApp(20, fakeApp{})
+	env.steam.setApp(21, fakeApp{})
+	env.steam.setWishlist(testSteamID,
+		steamapi.WishlistItem{AppID: 20},
+		steamapi.WishlistItem{AppID: 21},
+	)
+	env.runImport(t, testSteamID)
+
+	env.steam.wishlistPrivate = true
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{total: 1, processed: 1})
+	assertWishlistCounts(t, job, wantWishlistCounts{})
+
+	if !env.wishlistPrivate(t, testSteamID) {
+		t.Fatalf("private wishlist should set the user flag")
+	}
+	for _, appID := range []int{20, 21} {
+		if row, _ := env.userWishlist(t, testSteamID, appID); row.Removed {
+			t.Fatalf("private wishlist marked app %d removed", appID)
+		}
+	}
+}
+
+func TestWishlistFetchErrorKeepsState(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setApp(10, fakeApp{})
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	env.runImport(t, testSteamID)
+
+	env.steam.wishlistPrivate = true
+	env.runImport(t, testSteamID)
+	if !env.wishlistPrivate(t, testSteamID) {
+		t.Fatalf("private wishlist should set the user flag")
+	}
+
+	// A non-privacy error leaves the flag and the stored wishlist unchanged.
+	env.steam.wishlistPrivate = false
+	env.steam.wishlistErr = errors.New("steam is down")
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{})
+	assertWishlistCounts(t, job, wantWishlistCounts{})
+
+	if !env.wishlistPrivate(t, testSteamID) {
+		t.Fatalf("non-privacy error should not clear the private flag")
+	}
+	if row, exists := env.userWishlist(t, testSteamID, 10); !exists || row.Removed {
+		t.Fatalf("fetch error should not mark rows removed: %+v, exists %v", row, exists)
+	}
+}
+
+func TestWishlistRecoveryClearsPrivateFlag(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.wishlistPrivate = true
+	env.runImport(t, testSteamID)
+	if !env.wishlistPrivate(t, testSteamID) {
+		t.Fatalf("private wishlist should set the user flag")
+	}
+
+	env.steam.wishlistPrivate = false
+	env.steam.setApp(10, fakeApp{})
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	job := env.runImport(t, testSteamID)
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
+
+	if env.wishlistPrivate(t, testSteamID) {
+		t.Fatalf("successful wishlist fetch should clear the private flag")
+	}
+	if _, exists := env.userWishlist(t, testSteamID, 10); !exists {
+		t.Fatalf("recovered wishlist should be linked")
+	}
+}
+
+func TestOwnedAndWishlistCountsAreIndependent(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setOwned(testSteamID, 10)
+	env.steam.setApp(10, fakeApp{})
+	env.steam.setApp(20, fakeApp{})
+	env.steam.appErrs[22] = errors.New("connection reset")
+	env.steam.setWishlist(testSteamID,
+		steamapi.WishlistItem{AppID: 20},
+		steamapi.WishlistItem{AppID: 21}, // not found
+		steamapi.WishlistItem{AppID: 22}, // detail failure
+	)
+
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{total: 1, processed: 1})
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 3, processed: 1, skipped: 1, failed: 1})
+}
+
+func TestWishlistCancellationLeavesJobRunning(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setApp(10, fakeApp{})
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	env.steam.block[10] = true
+	env.steam.called = make(chan int, 1)
+
+	if err := env.importer.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	id := env.createJob(t, testSteamID)
+	env.importer.Enqueue(id)
+
+	select {
+	case <-env.steam.called:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("GetAppDetail was never called")
+	}
+	shutdown(t, env.importer)
+
+	job := env.getJob(t, id)
+	if job.Status != StatusRunning || job.FinishedAt.Valid {
+		t.Fatalf("interrupted job = %+v, want running", job)
+	}
+	if job.WishlistTotalApps != 1 || job.WishlistProcessedApps != 0 {
+		t.Fatalf("wishlist counts = %d/%d, want 1/0", job.WishlistTotalApps, job.WishlistProcessedApps)
+	}
+	if _, exists := env.userWishlist(t, testSteamID, 10); exists {
+		t.Fatalf("cancelled wishlist app should not be linked")
+	}
+}
+
+func TestWishlistRemovalFailureFailsJob(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setApp(10, fakeApp{})
+	env.steam.setApp(11, fakeApp{})
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
+	env.runImport(t, testSteamID)
+
+	if _, err := env.db.Exec(`
+		CREATE FUNCTION fail_wishlist_update() RETURNS trigger AS $$
+		BEGIN
+			RAISE EXCEPTION 'wishlist update blocked';
+		END;
+		$$ LANGUAGE plpgsql`); err != nil {
+		t.Fatalf("create trigger function: %v", err)
+	}
+	if _, err := env.db.Exec(`
+		CREATE TRIGGER fail_wishlist_update
+		BEFORE UPDATE ON steam_user_wishlist
+		FOR EACH ROW EXECUTE FUNCTION fail_wishlist_update()`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 11})
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusFailed, wantCounts{})
+	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
+	if !job.Error.Valid || !strings.Contains(job.Error.String, "mark removed wishlist apps") {
+		t.Fatalf("job error = %q", job.Error.String)
 	}
 }
 
