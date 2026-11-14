@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/config"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpserver"
@@ -38,8 +40,6 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	steamClient := steamapi.NewClient(appConfig.SteamApiTimeout, appConfig.SteamApiCacheInterval, appConfig.SteamApiKey)
-
 	databaseConnection, err := database.Open(ctx, appConfig.DatabaseURL, appConfig.DatabaseMaxOpenConns)
 	if err != nil {
 		return err
@@ -53,6 +53,18 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer appLogger.Close()
+
+	steamCache := steamapi.NewPostgresCache(databaseConnection, appLogger)
+	if err := steamCache.Prune(ctx, time.Now()); err != nil {
+		_ = appLogger.Event("steam_cache_prune_failed", map[string]any{"error": err.Error()})
+	}
+	steamLimiter := rate.NewLimiter(rate.Every(steamapi.DefaultStoreInterval), 1)
+	steamClient := steamapi.NewClient(
+		appConfig.SteamApiTimeout,
+		appConfig.SteamApiKey,
+		steamCache,
+		steamLimiter,
+	)
 
 	// The importer's context is independent of ctx so that it outlives the
 	// signal; it's stopped explicitly after the HTTP server has shut down.

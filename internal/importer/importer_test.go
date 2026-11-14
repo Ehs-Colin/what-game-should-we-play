@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbgen"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbtest"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/steamapi"
@@ -212,7 +210,6 @@ func newTestEnv(t *testing.T) *testEnv {
 	clock := &testClock{now: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)}
 
 	importer := New(db, steam, nil, testRefreshInterval)
-	importer.limiter = rate.NewLimiter(rate.Every(time.Millisecond), 1)
 	importer.retryBackoff = time.Millisecond
 	importer.now = clock.Now
 
@@ -562,24 +559,23 @@ func TestInvalidGenreRollsBackApp(t *testing.T) {
 	}
 }
 
-func TestFreshAppIsNotRefetched(t *testing.T) {
+func TestAppIsRefetchedAcrossJobs(t *testing.T) {
 	env := newTestEnv(t)
-	otherUser := int64(76561198000000002)
-	env.createUser(t, otherUser)
 	env.steam.setOwned(testSteamID, 10)
-	env.steam.setOwned(otherUser, 10)
-	env.steam.setApp(10, fakeApp{})
-
+	env.steam.setApp(10, fakeApp{name: "Old Name"})
 	env.runImport(t, testSteamID)
+
 	env.clock.Advance(testRefreshInterval - time.Minute)
-	job := env.runImport(t, otherUser)
+	env.steam.setApp(10, fakeApp{name: "New Name"})
+	job := env.runImport(t, testSteamID)
 
 	assertJob(t, job, StatusSucceeded, wantCounts{total: 1, processed: 1})
-	if got := env.steam.callCount(10); got != 1 {
-		t.Fatalf("GetAppDetail calls = %d, want 1", got)
+	if got := env.steam.callCount(10); got != 2 {
+		t.Fatalf("GetAppDetail calls = %d, want 2; freshness is the client cache's responsibility", got)
 	}
-	if _, exists := env.userApp(t, otherUser, 10); !exists {
-		t.Fatalf("second user should still be linked")
+	app, err := env.queries.GetAppByAlias(context.Background(), 10)
+	if err != nil || app.Name.String != "New Name" {
+		t.Fatalf("app = %+v, %v", app, err)
 	}
 }
 
@@ -749,21 +745,26 @@ func TestWishlistOverlapsOwnedApp(t *testing.T) {
 	}
 }
 
-func TestFreshWishlistAppIsNotRefetched(t *testing.T) {
+func TestWishlistAppIsRefetchedAcrossJobs(t *testing.T) {
 	env := newTestEnv(t)
 	env.steam.setWishlist(testSteamID, steamapi.WishlistItem{AppID: 10})
-	env.steam.setApp(10, fakeApp{})
-
+	env.steam.setApp(10, fakeApp{name: "Old Name"})
 	env.runImport(t, testSteamID)
+
 	env.clock.Advance(testRefreshInterval - time.Minute)
+	env.steam.setApp(10, fakeApp{name: "New Name"})
 	job := env.runImport(t, testSteamID)
 
 	assertWishlistCounts(t, job, wantWishlistCounts{total: 1, processed: 1})
-	if got := env.steam.callCount(10); got != 1 {
-		t.Fatalf("GetAppDetail calls = %d, want 1", got)
+	if got := env.steam.callCount(10); got != 2 {
+		t.Fatalf("GetAppDetail calls = %d, want 2; freshness is the client cache's responsibility", got)
 	}
 	if _, exists := env.userWishlist(t, testSteamID, 10); !exists {
-		t.Fatalf("fresh app should still be linked to the wishlist")
+		t.Fatalf("wishlist app should still be linked")
+	}
+	app, err := env.queries.GetAppByAlias(context.Background(), 10)
+	if err != nil || app.Name.String != "New Name" {
+		t.Fatalf("app = %+v, %v", app, err)
 	}
 }
 

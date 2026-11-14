@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
@@ -26,16 +25,7 @@ func (transport rewriteTransport) RoundTrip(request *http.Request) (*http.Respon
 
 func newWishlistTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-
-	target, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("parse test server URL: %v", err)
-	}
-	client := NewClient(time.Second, time.Minute, "")
-	client.httpClient.Transport = rewriteTransport{target: target}
-	return &client
+	return newTestClient(t, handler, nil, nil)
 }
 
 func TestGetWishlistItemsDecodesResponse(t *testing.T) {

@@ -16,27 +16,25 @@ import (
 )
 
 const (
-	defaultPort                  = 3030
-	defaultDatabaseMaxOpenConns  = 10
-	defaultAppOrigin             = "http://localhost:5959"
-	activeEncryptionVersionEnv   = "DATA_ENCRYPTION_ACTIVE_VERSION"
-	encryptionKeyEnvPrefix       = "DATA_ENCRYPTION_KEY_"
-	defaultSteamApiTimeout       = 5
-	defaultSteamApiCacheInterval = 5
-	defaultSteamRefreshInterval  = 7 * 24 * 60 * 60 // 7 days, in seconds
+	defaultPort                 = 3030
+	defaultDatabaseMaxOpenConns = 10
+	defaultAppOrigin            = "http://localhost:5959"
+	activeEncryptionVersionEnv  = "DATA_ENCRYPTION_ACTIVE_VERSION"
+	encryptionKeyEnvPrefix      = "DATA_ENCRYPTION_KEY_"
+	defaultSteamApiTimeout      = 5
+	defaultSteamRefreshInterval = 7 * 24 * 60 * 60 // 7 days, in seconds
 )
 
 type Config struct {
-	Port                  int
-	DatabaseURL           string
-	DatabaseMaxOpenConns  int
-	AppOrigin             string
-	SteamApiKey           string
-	SteamApiTimeout       time.Duration
-	SteamApiCacheInterval time.Duration
+	Port                 int
+	DatabaseURL          string
+	DatabaseMaxOpenConns int
+	AppOrigin            string
+	SteamApiKey          string
+	SteamApiTimeout      time.Duration
 	// SteamRefreshInterval controls how often a user's library and stored app
-	// details are re-imported. Separate from SteamApiCacheInterval, which only
-	// governs the in-memory HTTP cache.
+	// details are re-imported. The per-URL Steam response cache controls whether an
+	// individual request is served from Postgres or fetched from Steam.
 	SteamRefreshInterval time.Duration
 	//ActiveEncryptionKeyVersion string
 	//EncryptionKeys             map[string][32]byte
@@ -104,24 +102,19 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 	if err != nil {
 		return Config{}, err
 	}
-	steamApiCacheInterval, err := parseNonNegativeInteger(valueOrDefault(environment, "STEAM_API_CACHE_INTERVAL", strconv.Itoa(int(defaultSteamApiCacheInterval))), "STEAM_API_CACHE_INTERVAL")
-	if err != nil {
-		return Config{}, err
-	}
 	steamRefreshInterval, err := parseNonNegativeInteger(valueOrDefault(environment, "STEAM_REFRESH_INTERVAL", strconv.Itoa(defaultSteamRefreshInterval)), "STEAM_REFRESH_INTERVAL")
 	if err != nil {
 		return Config{}, err
 	}
 
 	return Config{
-		Port:                  port,
-		DatabaseURL:           databaseURL,
-		DatabaseMaxOpenConns:  databaseMaxOpenConns,
-		AppOrigin:             appOrigin,
-		SteamApiKey:           steamApiKey,
-		SteamApiTimeout:       time.Duration(int64(steamApiTimeout) * int64(time.Second)),
-		SteamApiCacheInterval: time.Duration(int64(steamApiCacheInterval) * int64(time.Second)),
-		SteamRefreshInterval:  time.Duration(int64(steamRefreshInterval) * int64(time.Second)),
+		Port:                 port,
+		DatabaseURL:          databaseURL,
+		DatabaseMaxOpenConns: databaseMaxOpenConns,
+		AppOrigin:            appOrigin,
+		SteamApiKey:          steamApiKey,
+		SteamApiTimeout:      time.Duration(int64(steamApiTimeout) * int64(time.Second)),
+		SteamRefreshInterval: time.Duration(int64(steamRefreshInterval) * int64(time.Second)),
 		//ActiveEncryptionKeyVersion: activeEncryptionKeyVersion,
 		//EncryptionKeys:             encryptionKeys,
 	}, nil

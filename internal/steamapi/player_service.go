@@ -40,35 +40,41 @@ type Games struct {
 // GetOwnedGames returns the apps a user owns. A private profile or empty
 // library has no "games" field; that is returned as an empty list.
 func (client *Client) GetOwnedGames(ctx context.Context, steamId int64) (*OwnedGamesResponse, error) {
-	url, err := url.Parse(IPlayerServiceURL + "GetOwnedGames/v1/")
+	requestURL, err := url.Parse(IPlayerServiceURL + "GetOwnedGames/v1/")
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse GetOwnedGames URL: %v", err)
 	}
-	values := url.Query()
+	values := requestURL.Query()
 	values.Add("key", client.steamApiKey)
 	values.Add("steamid", strconv.FormatInt(steamId, 10))
-	url.RawQuery = values.Encode()
+	requestURL.RawQuery = values.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", requestURL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create GetOwnedGames request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to send GetOwnedGames request: %v", err)
-	}
-	defer resp.Body.Close()
-	if err := checkStatus(resp, "GetOwnedGames"); err != nil {
-		return nil, err
-	}
 	var result OwnedGamesResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("Failed to decode GetOwnedGames response: %v", err)
-	}
-	if result.Response.Games == nil {
-		result.Response.Games = []Games{}
+	err = client.fetch(
+		ctx,
+		"v1:owned_games:"+strconv.FormatInt(steamId, 10),
+		req,
+		func(resp *http.Response) error {
+			return checkStatus(resp, "GetOwnedGames")
+		},
+		func(body []byte) error {
+			if err := json.Unmarshal(body, &result); err != nil {
+				return fmt.Errorf("Failed to decode GetOwnedGames response: %v", err)
+			}
+			if result.Response.Games == nil {
+				result.Response.Games = []Games{}
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
 	}
 	return &result, nil
 }

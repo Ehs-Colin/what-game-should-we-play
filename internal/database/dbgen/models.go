@@ -84,6 +84,22 @@ type ImportJob struct {
 	FinishedAt            sql.NullTime   `json:"finished_at"`
 }
 
+type SteamApiCache struct {
+	CacheKey     string    `json:"cache_key"`
+	ResponseBody []byte    `json:"response_body"`
+	FetchedAt    time.Time `json:"fetched_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	CallCount    int32     `json:"call_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type SteamApiCacheCall struct {
+	ID        int64     `json:"id"`
+	CacheKey  string    `json:"cache_key"`
+	FetchedAt time.Time `json:"fetched_at"`
+}
+
 type SteamUser struct {
 	SteamID         int64     `json:"steam_id"`
 	Name            string    `json:"name"`

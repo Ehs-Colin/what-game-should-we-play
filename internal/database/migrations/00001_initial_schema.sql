@@ -98,6 +98,29 @@ CREATE TABLE steam_user_wishlist (
     FOREIGN KEY (app_id) REFERENCES app_alias(alias_id)
 );
 
+-- One row per normalized Steam resource. response_body is the raw HTTP body.
+CREATE TABLE steam_api_cache (
+    cache_key TEXT PRIMARY KEY,
+    response_body BYTEA NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    call_count INT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX steam_api_cache_expires_at ON steam_api_cache (expires_at);
+
+-- One row per successful cache miss. Old rows are pruned per key on write and
+-- globally at startup.
+CREATE TABLE steam_api_cache_calls (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    cache_key TEXT NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (cache_key) REFERENCES steam_api_cache(cache_key) ON DELETE CASCADE
+);
+CREATE INDEX steam_api_cache_calls_key_fetched_at
+    ON steam_api_cache_calls (cache_key, fetched_at);
+
 CREATE TABLE import_jobs (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     steam_id BIGINT NOT NULL,
@@ -119,6 +142,8 @@ CREATE TABLE import_jobs (
 CREATE INDEX import_jobs_steam_id_status ON import_jobs (steam_id, status);
 
 -- +goose Down
+DROP TABLE steam_api_cache_calls;
+DROP TABLE steam_api_cache;
 DROP TABLE import_jobs;
 DROP TABLE steam_user_wishlist;
 DROP TABLE steam_user_apps;
