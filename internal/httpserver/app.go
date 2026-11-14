@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/api"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpx"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/importer"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/logging"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/steamapi"
@@ -63,10 +64,10 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	// 	fixedWindowRateLimiter(rateLimitSettings),
 	// 	validateRequestOrigin(options.AppOrigin, renderer),
 	// )
-	// mainMux := http.NewServeMux()
-	// mainMux.HandleFunc("GET /health", func(responseWriter http.ResponseWriter, _ *http.Request) {
-	// 	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"ok": true, "app": "bearly-secure"})
-	// })
+	mainMux := http.NewServeMux()
+	mainMux.HandleFunc("GET /health", func(responseWriter http.ResponseWriter, _ *http.Request) {
+		httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"ok": true, "app": "bearly-secure"})
+	})
 	// staticHandler := newStaticHandler(publicRoot)
 	// mainMux.Handle("GET /reset.css", staticHandler)
 	// mainMux.Handle("GET /styles.css", staticHandler)
@@ -77,7 +78,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	// mainMux.Handle("GET /shipping-widget.js", staticHandler)
 	// mainMux.Handle("GET /product-photos/{filename}", staticHandler)
 	// mainMux.HandleFunc("POST /integrations/pawpal/webhook", pawPalHandler.Webhook)
-	// mainMux.Handle("/", dynamicHandler)
+	mainMux.Handle("/", dynamicMux)
 
 	// handler := applyMiddleware(
 	// 	mainMux,
@@ -87,7 +88,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	// 	recoverPanics(logger, renderer),
 	// )
 
-	return &Application{Handler: dynamicMux, publicRoot: publicRoot}, nil
+	return &Application{Handler: mainMux, publicRoot: publicRoot}, nil
 }
 
 func (application *Application) Close() error {

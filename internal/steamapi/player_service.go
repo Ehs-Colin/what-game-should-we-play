@@ -49,7 +49,6 @@ func (client *Client) GetOwnedGames(ctx context.Context, steamId int64) (*OwnedG
 	values.Add("steamid", strconv.FormatInt(steamId, 10))
 	url.RawQuery = values.Encode()
 
-	fmt.Printf("Getting owned games from URL: %s\n", url.String())
 	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create GetOwnedGames request: %v", err)
