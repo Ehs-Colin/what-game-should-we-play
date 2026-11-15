@@ -64,7 +64,10 @@ func newHandlerEnv(t *testing.T, resolver fakeResolver) *handlerEnv {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/steamuser", handler.InsertSteamUser)
+	mux.HandleFunc("GET /api/dashboard", handler.GetDashboard)
 	mux.HandleFunc("GET /api/steamusers", handler.GetSteamUserByName)
+	mux.HandleFunc("GET /api/steamusers/search", handler.SearchSteamUsers)
+	mux.HandleFunc("GET /api/steamusers/by-name", handler.GetSteamUserView)
 	mux.HandleFunc("GET /api/import-jobs/{id}", handler.GetImportJob)
 	return &handlerEnv{db: db, queries: dbgen.New(db), mux: mux}
 }
@@ -131,11 +134,11 @@ func TestInsertSteamUserNewUser(t *testing.T) {
 
 	recorder, body := env.postUser(t)
 	assertCreated(t, recorder, body)
-	if body.SteamUser.SteamID != testSteamID || body.SteamUser.Name != testVanity {
+	if want := strconv.FormatInt(testSteamID, 10); body.SteamUser.SteamID != want || body.SteamUser.Name != testVanity {
 		t.Fatalf("steamUser = %+v", body.SteamUser)
 	}
-	if body.ImportJob.SteamID != testSteamID {
-		t.Fatalf("importJob.steamId = %d", body.ImportJob.SteamID)
+	if want := strconv.FormatInt(testSteamID, 10); body.ImportJob.SteamID != want {
+		t.Fatalf("importJob.steamId = %q, want %q", body.ImportJob.SteamID, want)
 	}
 }
 
@@ -302,13 +305,13 @@ func TestGetSteamUserByNameFound(t *testing.T) {
 	}
 
 	var body struct {
-		SteamUser dbgen.SteamUser `json:"steamUser"`
+		SteamUser steamUserView `json:"steamUser"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response %q: %v", recorder.Body.String(), err)
 	}
-	if body.SteamUser.SteamID != testSteamID {
-		t.Fatalf("steam_id = %d, want %d", body.SteamUser.SteamID, testSteamID)
+	if want := strconv.FormatInt(testSteamID, 10); body.SteamUser.SteamID != want {
+		t.Fatalf("steamId = %q, want %q", body.SteamUser.SteamID, want)
 	}
 	if body.SteamUser.Name != testVanity {
 		t.Fatalf("name = %q, want %q", body.SteamUser.Name, testVanity)
@@ -351,13 +354,13 @@ func TestGetSteamUserByNameReturnsNewestMatch(t *testing.T) {
 	}
 
 	var body struct {
-		SteamUser dbgen.SteamUser `json:"steamUser"`
+		SteamUser steamUserView `json:"steamUser"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response %q: %v", recorder.Body.String(), err)
 	}
-	if body.SteamUser.SteamID != newerSteamID {
-		t.Fatalf("steam_id = %d, want newest %d", body.SteamUser.SteamID, newerSteamID)
+	if want := strconv.FormatInt(newerSteamID, 10); body.SteamUser.SteamID != want {
+		t.Fatalf("steamId = %q, want newest %q", body.SteamUser.SteamID, want)
 	}
 }
 

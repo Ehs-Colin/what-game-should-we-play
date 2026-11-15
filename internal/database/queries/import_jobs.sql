@@ -18,6 +18,12 @@ WHERE steam_id = $1 AND status IN ('queued', 'running')
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
 
+-- name: GetLatestImportJobForUser :one
+SELECT * FROM import_jobs
+WHERE steam_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
 -- name: GetLatestSucceededImportJobForUser :one
 SELECT * FROM import_jobs
 WHERE steam_id = $1 AND status = 'succeeded'

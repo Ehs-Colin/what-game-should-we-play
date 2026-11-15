@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbgen"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpx"
@@ -41,53 +40,8 @@ func NewHandler(apiStore *Store, importer ImportRequester, logger *logging.Logge
 }
 
 type insertSteamUserResponse struct {
-	SteamUser dbgen.SteamUser `json:"steamUser"`
-	ImportJob importJobView   `json:"importJob"`
-}
-
-type importJobView struct {
-	ID                    int64      `json:"id"`
-	SteamID               int64      `json:"steamId"`
-	Status                string     `json:"status"`
-	TotalApps             int32      `json:"totalApps"`
-	ProcessedApps         int32      `json:"processedApps"`
-	SkippedApps           int32      `json:"skippedApps"`
-	FailedApps            int32      `json:"failedApps"`
-	WishlistTotalApps     int32      `json:"wishlistTotalApps"`
-	WishlistProcessedApps int32      `json:"wishlistProcessedApps"`
-	WishlistSkippedApps   int32      `json:"wishlistSkippedApps"`
-	WishlistFailedApps    int32      `json:"wishlistFailedApps"`
-	Error                 *string    `json:"error"`
-	CreatedAt             time.Time  `json:"createdAt"`
-	StartedAt             *time.Time `json:"startedAt"`
-	FinishedAt            *time.Time `json:"finishedAt"`
-}
-
-func newImportJobView(job dbgen.ImportJob) importJobView {
-	view := importJobView{
-		ID:                    job.ID,
-		SteamID:               job.SteamID,
-		Status:                job.Status,
-		TotalApps:             job.TotalApps,
-		ProcessedApps:         job.ProcessedApps,
-		SkippedApps:           job.SkippedApps,
-		FailedApps:            job.FailedApps,
-		WishlistTotalApps:     job.WishlistTotalApps,
-		WishlistProcessedApps: job.WishlistProcessedApps,
-		WishlistSkippedApps:   job.WishlistSkippedApps,
-		WishlistFailedApps:    job.WishlistFailedApps,
-		CreatedAt:             job.CreatedAt,
-	}
-	if job.Error.Valid {
-		view.Error = &job.Error.String
-	}
-	if job.StartedAt.Valid {
-		view.StartedAt = &job.StartedAt.Time
-	}
-	if job.FinishedAt.Valid {
-		view.FinishedAt = &job.FinishedAt.Time
-	}
-	return view
+	SteamUser steamUserView `json:"steamUser"`
+	ImportJob importJobView `json:"importJob"`
 }
 
 func importJobLocation(id int64) string {
@@ -149,9 +103,34 @@ func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, requ
 		responseWriter.Header().Set("Location", importJobLocation(job.ID))
 	}
 	httpx.RespondWithJSON(responseWriter, status, insertSteamUserResponse{
-		SteamUser: steamUser,
+		SteamUser: newSteamUserView(steamUser),
 		ImportJob: newImportJobView(job),
 	})
+}
+
+type dashboardResponse struct {
+	TotalSteamUsers int64 `json:"totalSteamUsers"`
+	TotalApps       int64 `json:"totalApps"`
+	ImportJobs      struct {
+		Running int64 `json:"running"`
+		Queued  int64 `json:"queued"`
+	} `json:"importJobs"`
+}
+
+// GetDashboard returns the database-wide counts shown on the dashboard.
+func (handler *Handler) GetDashboard(responseWriter http.ResponseWriter, request *http.Request) {
+	stats, err := handler.apiStore.queries.GetDashboardStats(request.Context())
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	var response dashboardResponse
+	response.TotalSteamUsers = stats.TotalSteamUsers
+	response.TotalApps = stats.TotalApps
+	response.ImportJobs.Running = stats.RunningJobs
+	response.ImportJobs.Queued = stats.QueuedJobs
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
 }
 
 func (handler *Handler) GetImportJob(responseWriter http.ResponseWriter, request *http.Request) {
@@ -194,8 +173,215 @@ func (handler *Handler) GetSteamUserByName(responseWriter http.ResponseWriter, r
 	}
 
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{
-		"steamUser": steamUser,
+		"steamUser": newSteamUserView(steamUser),
 	})
+}
+
+type searchSteamUsersResponse struct {
+	SteamUsers []steamUserSummaryView `json:"steamUsers"`
+}
+
+// SearchSteamUsers returns users whose names contain the query
+// case-insensitively. Sorting and filtering happen in the browser.
+func (handler *Handler) SearchSteamUsers(responseWriter http.ResponseWriter, request *http.Request) {
+	name := strings.TrimSpace(request.URL.Query().Get("name"))
+	if name == "" {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	rows, err := handler.apiStore.queries.SearchSteamUsers(request.Context(), name)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	response := searchSteamUsersResponse{SteamUsers: make([]steamUserSummaryView, 0, len(rows))}
+	for _, row := range rows {
+		response.SteamUsers = append(response.SteamUsers, newSteamUserSummaryView(row))
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
+}
+
+type steamUserViewResponse struct {
+	SteamUser        steamUserView    `json:"steamUser"`
+	OwnedAppCount    int64            `json:"ownedAppCount"`
+	WishlistAppCount int64            `json:"wishlistAppCount"`
+	LatestImport     *importJobView   `json:"latestImport"`
+	HasActiveJob     bool             `json:"hasActiveJob"`
+	List             string           `json:"list"`
+	Page             int              `json:"page"`
+	PageSize         int              `json:"pageSize"`
+	Total            int64            `json:"total"`
+	TotalPages       int64            `json:"totalPages"`
+	Apps             []appSummaryView `json:"apps"`
+}
+
+const (
+	appListOwned    = "owned"
+	appListWishlist = "wishlist"
+
+	defaultAppPageSize = 25
+)
+
+// GetSteamUserView resolves an exact Steam name and returns one page of that
+// user's owned or wishlisted apps.
+func (handler *Handler) GetSteamUserView(responseWriter http.ResponseWriter, request *http.Request) {
+	name := strings.TrimSpace(request.URL.Query().Get("name"))
+	if name == "" {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	list, ok := parseAppList(request.URL.Query().Get("list"))
+	if !ok {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "list must be owned or wishlist")
+		return
+	}
+
+	page, ok := parsePositivePage(request.URL.Query().Get("page"))
+	if !ok {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "page must be a positive number")
+		return
+	}
+
+	pageSize, ok := parsePageSize(request.URL.Query().Get("pageSize"))
+	if !ok {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "pageSize must be 25, 50, or 100")
+		return
+	}
+
+	ctx := request.Context()
+	steamUser, err := handler.apiStore.queries.GetSteamUserByName(ctx, name)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.RespondWithError(responseWriter, http.StatusNotFound, "steam user not found")
+		return
+	}
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	ownedAppCount, err := handler.apiStore.queries.CountActiveSteamUserApps(ctx, steamUser.SteamID)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	wishlistAppCount, err := handler.apiStore.queries.CountActiveSteamUserWishlist(ctx, steamUser.SteamID)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	total := ownedAppCount
+	if list == appListWishlist {
+		total = wishlistAppCount
+	}
+	totalPages := int64(0)
+	if total > 0 {
+		totalPages = (total + int64(pageSize) - 1) / int64(pageSize)
+	}
+	if totalPages == 0 {
+		page = 1
+	} else if int64(page) > totalPages {
+		page = int(totalPages)
+	}
+
+	params := dbgen.ListActiveSteamUserAppsPageParams{
+		SteamID:   steamUser.SteamID,
+		RowOffset: int32((page - 1) * pageSize),
+		PageSize:  int32(pageSize),
+	}
+	var apps []dbgen.App
+	if list == appListWishlist {
+		apps, err = handler.apiStore.queries.ListActiveSteamUserWishlistPage(ctx, dbgen.ListActiveSteamUserWishlistPageParams(params))
+	} else {
+		apps, err = handler.apiStore.queries.ListActiveSteamUserAppsPage(ctx, params)
+	}
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	var latestImport *importJobView
+	latestJob, err := handler.apiStore.queries.GetLatestImportJobForUser(ctx, steamUser.SteamID)
+	if errors.Is(err, sql.ErrNoRows) {
+		latestImport = nil
+	} else if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	} else {
+		view := newImportJobView(latestJob)
+		latestImport = &view
+	}
+
+	hasActiveJob := true
+	if _, err := handler.apiStore.queries.GetActiveImportJobForUser(ctx, steamUser.SteamID); errors.Is(err, sql.ErrNoRows) {
+		hasActiveJob = false
+	} else if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	response := steamUserViewResponse{
+		SteamUser:        newSteamUserView(steamUser),
+		OwnedAppCount:    ownedAppCount,
+		WishlistAppCount: wishlistAppCount,
+		LatestImport:     latestImport,
+		HasActiveJob:     hasActiveJob,
+		List:             list,
+		Page:             page,
+		PageSize:         pageSize,
+		Total:            total,
+		TotalPages:       totalPages,
+		Apps:             make([]appSummaryView, 0, len(apps)),
+	}
+	for _, app := range apps {
+		response.Apps = append(response.Apps, newAppSummaryView(app))
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
+}
+
+// parseAppList defaults an empty value to owned and rejects unknown lists.
+func parseAppList(value string) (string, bool) {
+	switch value {
+	case "", appListOwned:
+		return appListOwned, true
+	case appListWishlist:
+		return appListWishlist, true
+	default:
+		return "", false
+	}
+}
+
+// parsePositivePage defaults an empty value to page 1.
+func parsePositivePage(value string) (int, bool) {
+	if value == "" {
+		return 1, true
+	}
+	page, err := strconv.Atoi(value)
+	if err != nil || page < 1 {
+		return 0, false
+	}
+	return page, true
+}
+
+// parsePageSize defaults an empty value to 25 and accepts only the sizes the
+// pagination controls offer.
+func parsePageSize(value string) (int, bool) {
+	if value == "" {
+		return defaultAppPageSize, true
+	}
+	pageSize, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
+	}
+	switch pageSize {
+	case 25, 50, 100:
+		return pageSize, true
+	default:
+		return 0, false
+	}
 }
 
 func (handler *Handler) GetSteamUsers(responseWriter http.ResponseWriter, request *http.Request) {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
+	"strings"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/api"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpx"
@@ -49,14 +51,17 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	//dynamicMux.HandleFunc("GET /api/steamuser/{id}", apiHandler.GetSteamUserById)
 	//dynamicMux.HandleFunc("GET /api/steamuser/{name}", apiHandler.GetSteamUserByName)
 	//dynamicMux.HandleFunc("GET /api/steamusers", apiHandler.GetSteamUsers)
+	dynamicMux.HandleFunc("GET /api/dashboard", apiHandler.GetDashboard)
 	dynamicMux.HandleFunc("POST /api/steamuser", apiHandler.InsertSteamUser)
 	dynamicMux.HandleFunc("GET /api/steamusers", apiHandler.GetSteamUserByName)
+	dynamicMux.HandleFunc("GET /api/steamusers/search", apiHandler.SearchSteamUsers)
+	dynamicMux.HandleFunc("GET /api/steamusers/by-name", apiHandler.GetSteamUserView)
 	dynamicMux.HandleFunc("GET /api/import-jobs/{id}", apiHandler.GetImportJob)
 
 	// Serve the static front end. The API patterns above are more specific, so
-	// they take precedence over this catch-all.
-	fileServer := http.FileServer(http.FS(publicRoot.FS()))
-	dynamicMux.Handle("GET /", fileServer)
+	// they take precedence over this catch-all. Unknown extensionless paths
+	// fall back to index.html so client-side routes survive a hard refresh.
+	dynamicMux.Handle("GET /", newSPAHandler(publicRoot))
 
 	// dynamicHandler := applyMiddleware(
 	// 	dynamicMux,
@@ -89,6 +94,34 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	// )
 
 	return &Application{Handler: mainMux, publicRoot: publicRoot}, nil
+}
+
+func newSPAHandler(publicRoot *os.Root) http.Handler {
+	fileServer := http.FileServer(http.FS(publicRoot.FS()))
+	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/api" || strings.HasPrefix(request.URL.Path, "/api/") {
+			http.NotFound(responseWriter, request)
+			return
+		}
+
+		name := strings.TrimPrefix(path.Clean(request.URL.Path), "/")
+		if name != "" && name != "." {
+			if info, err := publicRoot.Stat(name); err == nil && !info.IsDir() {
+				fileServer.ServeHTTP(responseWriter, request)
+				return
+			}
+			if path.Ext(name) != "" {
+				http.NotFound(responseWriter, request)
+				return
+			}
+		}
+
+		// Extensionless paths that do not exist are client-side routes. Serve
+		// the SPA shell instead of masking a missing asset with HTML.
+		clone := request.Clone(request.Context())
+		clone.URL.Path = "/"
+		fileServer.ServeHTTP(responseWriter, clone)
+	})
 }
 
 func (application *Application) Close() error {

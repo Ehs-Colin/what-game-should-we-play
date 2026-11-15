@@ -7,6 +7,8 @@ package dbgen
 
 import (
 	"context"
+	"database/sql"
+	"time"
 )
 
 const createSteamUser = `-- name: CreateSteamUser :one
@@ -85,6 +87,94 @@ func (q *Queries) GetSteamUserByName(ctx context.Context, name string) (SteamUse
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const searchSteamUsers = `-- name: SearchSteamUsers :many
+SELECT
+    su.steam_id,
+    su.name,
+    su.wishlist_private,
+    su.created_at,
+    su.updated_at,
+    (
+        SELECT COUNT(DISTINCT aa.app_id)
+        FROM steam_user_apps sua
+        JOIN app_alias aa ON aa.alias_id = sua.app_id
+        WHERE sua.steam_id = su.steam_id
+          AND sua.removed = FALSE
+    ) AS owned_app_count,
+    (
+        SELECT COUNT(DISTINCT aa.app_id)
+        FROM steam_user_wishlist suw
+        JOIN app_alias aa ON aa.alias_id = suw.app_id
+        WHERE suw.steam_id = su.steam_id
+          AND suw.removed = FALSE
+    ) AS wishlist_app_count,
+    latest.status AS latest_import_status,
+    latest.finished_at AS latest_import_finished_at,
+    EXISTS (
+        SELECT 1
+        FROM import_jobs active
+        WHERE active.steam_id = su.steam_id
+          AND active.status IN ('queued', 'running')
+    ) AS has_active_job
+FROM steam_users su
+LEFT JOIN import_jobs latest ON latest.id = (
+    SELECT id
+    FROM import_jobs
+    WHERE steam_id = su.steam_id
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+)
+WHERE strpos(lower(su.name), lower($1)) > 0
+ORDER BY su.name, su.steam_id
+`
+
+type SearchSteamUsersRow struct {
+	SteamID                int64          `json:"steam_id"`
+	Name                   string         `json:"name"`
+	WishlistPrivate        bool           `json:"wishlist_private"`
+	CreatedAt              time.Time      `json:"created_at"`
+	UpdatedAt              time.Time      `json:"updated_at"`
+	OwnedAppCount          int64          `json:"owned_app_count"`
+	WishlistAppCount       int64          `json:"wishlist_app_count"`
+	LatestImportStatus     sql.NullString `json:"latest_import_status"`
+	LatestImportFinishedAt sql.NullTime   `json:"latest_import_finished_at"`
+	HasActiveJob           bool           `json:"has_active_job"`
+}
+
+func (q *Queries) SearchSteamUsers(ctx context.Context, name string) ([]SearchSteamUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchSteamUsers, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchSteamUsersRow
+	for rows.Next() {
+		var i SearchSteamUsersRow
+		if err := rows.Scan(
+			&i.SteamID,
+			&i.Name,
+			&i.WishlistPrivate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OwnedAppCount,
+			&i.WishlistAppCount,
+			&i.LatestImportStatus,
+			&i.LatestImportFinishedAt,
+			&i.HasActiveJob,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateSteamUser = `-- name: UpdateSteamUser :one

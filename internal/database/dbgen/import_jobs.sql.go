@@ -176,6 +176,36 @@ func (q *Queries) GetImportJob(ctx context.Context, id int64) (ImportJob, error)
 	return i, err
 }
 
+const getLatestImportJobForUser = `-- name: GetLatestImportJobForUser :one
+SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at FROM import_jobs
+WHERE steam_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestImportJobForUser(ctx context.Context, steamID int64) (ImportJob, error) {
+	row := q.db.QueryRowContext(ctx, getLatestImportJobForUser, steamID)
+	var i ImportJob
+	err := row.Scan(
+		&i.ID,
+		&i.SteamID,
+		&i.Status,
+		&i.TotalApps,
+		&i.ProcessedApps,
+		&i.SkippedApps,
+		&i.FailedApps,
+		&i.WishlistTotalApps,
+		&i.WishlistProcessedApps,
+		&i.WishlistSkippedApps,
+		&i.WishlistFailedApps,
+		&i.Error,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
 const getLatestSucceededImportJobForUser = `-- name: GetLatestSucceededImportJobForUser :one
 SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at FROM import_jobs
 WHERE steam_id = $1 AND status = 'succeeded'

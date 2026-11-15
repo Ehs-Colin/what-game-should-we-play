@@ -44,3 +44,19 @@ JOIN app_alias aa ON aa.app_id = a.steam_appid
 JOIN steam_user_apps sua ON sua.app_id = aa.alias_id
 WHERE sua.steam_id = $1 AND sua.removed = FALSE
 ORDER BY a.name;
+
+-- name: CountActiveSteamUserApps :one
+SELECT COUNT(DISTINCT aa.app_id)
+FROM steam_user_apps sua
+JOIN app_alias aa ON aa.alias_id = sua.app_id
+WHERE sua.steam_id = $1
+  AND sua.removed = FALSE;
+
+-- name: ListActiveSteamUserAppsPage :many
+SELECT DISTINCT a.* FROM apps a
+JOIN app_alias aa ON aa.app_id = a.steam_appid
+JOIN steam_user_apps sua ON sua.app_id = aa.alias_id
+WHERE sua.steam_id = @steam_id
+  AND sua.removed = FALSE
+ORDER BY a.name NULLS LAST, a.steam_appid
+LIMIT @page_size OFFSET @row_offset;

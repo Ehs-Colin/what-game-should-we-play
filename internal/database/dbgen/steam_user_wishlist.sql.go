@@ -54,6 +54,21 @@ func (q *Queries) ClearSteamUserWishlist(ctx context.Context, steamID int64) err
 	return err
 }
 
+const countActiveSteamUserWishlist = `-- name: CountActiveSteamUserWishlist :one
+SELECT COUNT(DISTINCT aa.app_id)
+FROM steam_user_wishlist suw
+JOIN app_alias aa ON aa.alias_id = suw.app_id
+WHERE suw.steam_id = $1
+  AND suw.removed = FALSE
+`
+
+func (q *Queries) CountActiveSteamUserWishlist(ctx context.Context, steamID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveSteamUserWishlist, steamID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const listActiveSteamUserWishlist = `-- name: ListActiveSteamUserWishlist :many
 SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN app_alias aa ON aa.app_id = a.steam_appid
@@ -64,6 +79,65 @@ ORDER BY a.name
 
 func (q *Queries) ListActiveSteamUserWishlist(ctx context.Context, steamID int64) ([]App, error) {
 	rows, err := q.db.QueryContext(ctx, listActiveSteamUserWishlist, steamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []App
+	for rows.Next() {
+		var i App
+		if err := rows.Scan(
+			&i.SteamAppid,
+			&i.Name,
+			&i.DetailedDescription,
+			&i.AboutTheGame,
+			&i.ShortDescription,
+			&i.HeaderImage,
+			&i.Website,
+			&i.PriceCurrency,
+			&i.PriceInitial,
+			&i.PriceFinal,
+			&i.PriceDiscountPercent,
+			&i.PriceFinalFormatted,
+			&i.PlatformWindows,
+			&i.PlatformMac,
+			&i.PlatformLinux,
+			&i.ReleaseDate,
+			&i.ReleaseComingSoon,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveSteamUserWishlistPage = `-- name: ListActiveSteamUserWishlistPage :many
+SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
+JOIN app_alias aa ON aa.app_id = a.steam_appid
+JOIN steam_user_wishlist suw ON suw.app_id = aa.alias_id
+WHERE suw.steam_id = $1
+  AND suw.removed = FALSE
+ORDER BY a.name NULLS LAST, a.steam_appid
+LIMIT $3 OFFSET $2
+`
+
+type ListActiveSteamUserWishlistPageParams struct {
+	SteamID   int64 `json:"steam_id"`
+	RowOffset int32 `json:"row_offset"`
+	PageSize  int32 `json:"page_size"`
+}
+
+func (q *Queries) ListActiveSteamUserWishlistPage(ctx context.Context, arg ListActiveSteamUserWishlistPageParams) ([]App, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveSteamUserWishlistPage, arg.SteamID, arg.RowOffset, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}

@@ -2,7 +2,25 @@
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+const DASHBOARD_REFRESH_MS = 5000;
 const PROFILE_PREFIX = "https://steamcommunity.com/id/";
+
+const ROUTES = new Map([
+    ["/", "dashboard"],
+    ["/import", "import"],
+    ["/search", "search"],
+    ["/user", "user"],
+]);
+
+const ROUTE_TITLES = {
+    dashboard: "Dashboard",
+    import: "Import Steam User",
+    search: "Search Users",
+    user: "View User",
+};
+
+const viewSections = document.querySelectorAll("[data-view]");
+const navLinks = document.querySelectorAll(".site-nav a[data-route]");
 
 const form = document.querySelector("#lookup-form");
 const input = document.querySelector("#steam-name");
@@ -21,19 +39,143 @@ const jobSkipped = document.querySelector("#job-skipped");
 const jobFailed = document.querySelector("#job-failed");
 const jobError = document.querySelector("#job-error");
 
+const dashboardStatus = document.querySelector("#dashboard-status");
+const dashboardMetrics = document.querySelector("#dashboard-metrics");
+const dashboardUpdated = document.querySelector("#dashboard-updated");
+const metricUsers = document.querySelector("#metric-users");
+const metricApps = document.querySelector("#metric-apps");
+const metricRunning = document.querySelector("#metric-running");
+const metricQueued = document.querySelector("#metric-queued");
+
+const searchForm = document.querySelector("#search-form");
+const searchInput = document.querySelector("#search-name");
+const searchButton = document.querySelector("#search-button");
+const searchControls = document.querySelector("#search-controls");
+const searchSort = document.querySelector("#search-sort");
+const searchDirection = document.querySelector("#search-direction");
+const searchWishlist = document.querySelector("#search-wishlist");
+const searchReset = document.querySelector("#search-reset");
+const searchStatus = document.querySelector("#search-status");
+const searchCount = document.querySelector("#search-count");
+const searchResults = document.querySelector("#search-results");
+
+const userForm = document.querySelector("#user-form");
+const userInput = document.querySelector("#user-name");
+const userStatus = document.querySelector("#user-status");
+const userSummary = document.querySelector("#user-summary");
+const userStatusBadge = document.querySelector("#user-status-badge");
+const userSummaryDetails = document.querySelector("#user-summary-details");
+const userSummaryNotice = document.querySelector("#user-summary-notice");
+const userApps = document.querySelector("#user-apps");
+const tabOwned = document.querySelector("#tab-owned");
+const tabWishlist = document.querySelector("#tab-wishlist");
+const ownedTabCount = document.querySelector("#owned-tab-count");
+const wishlistTabCount = document.querySelector("#wishlist-tab-count");
+const userAppPanel = document.querySelector("#user-app-panel");
+const userListCount = document.querySelector("#user-list-count");
+const userPageSize = document.querySelector("#user-page-size");
+const userAppRows = document.querySelector("#user-app-rows");
+const userPagination = document.querySelector("#user-pagination");
+
+const numberFormatter = new Intl.NumberFormat();
+
+let currentRoute = null;
+let currentHref = null;
+
+let importToken = 0;
+let lookupController = null;
+let lookupBusy = false;
+let pollTimer = null;
+let pollController = null;
+let lastJob = null;
+let pollDeadline = 0;
+
+let dashboardTimer = null;
+let dashboardController = null;
+
 let searchToken = 0;
-let activeController = null;
+let searchController = null;
+let searchBusy = false;
+let searchUsers = [];
+
+const SEARCH_SORT_DEFAULT_DIRECTIONS = {
+    name: "asc",
+    updated: "desc",
+    owned: "desc",
+    wishlist: "desc",
+};
+
+const APP_PAGE_SIZES = [25, 50, 100];
+
+let userToken = 0;
+let userController = null;
+const userState = {
+    name: "",
+    list: "owned",
+    page: 1,
+    pageSize: 25,
+    pages: { owned: 1, wishlist: 1 },
+    data: null,
+};
 
 form.addEventListener("submit", (event) => {
     event.preventDefault();
     void search();
 });
 
+searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void performSearch();
+});
+
+searchSort.addEventListener("change", () => {
+    searchDirection.value = SEARCH_SORT_DEFAULT_DIRECTIONS[searchSort.value] ?? "asc";
+    renderSearchPipeline();
+});
+searchDirection.addEventListener("change", renderSearchPipeline);
+searchWishlist.addEventListener("change", renderSearchPipeline);
+searchReset.addEventListener("click", () => {
+    resetSearchControls();
+    renderSearchPipeline();
+});
+
+userForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = userInput.value.trim();
+    if (!name) {
+        setUserStatus("Enter a Steam name.", "error");
+        userInput.focus();
+        return;
+    }
+    userState.pages = { owned: 1, wishlist: 1 };
+    setActiveTab("owned");
+    pushUserURL(name, "owned", 1, userPageSizeFromValue(userPageSize.value));
+});
+
+tabOwned.addEventListener("click", () => {
+    selectUserList("owned");
+});
+tabWishlist.addEventListener("click", () => {
+    selectUserList("wishlist");
+});
+userPageSize.addEventListener("change", () => {
+    const pageSize = userPageSizeFromValue(userPageSize.value);
+    userState.pages = { owned: 1, wishlist: 1 };
+    if (!userState.name) {
+        userState.pageSize = pageSize;
+        return;
+    }
+    pushUserURL(userState.name, userState.list, 1, pageSize);
+});
+
 async function search() {
-    const token = ++searchToken;
-    activeController?.abort();
+    const token = ++importToken;
+    lookupController?.abort();
+    stopPolling();
+    lastJob = null;
+
     const controller = new AbortController();
-    activeController = controller;
+    lookupController = controller;
 
     const name = normalizeName(input.value);
     resetView();
@@ -101,7 +243,7 @@ async function search() {
         setStatus("User saved. Import started.");
 
         if (body.importJob) {
-            startPolling(body.importJob, token, controller.signal);
+            startPolling(body.importJob, token);
         } else {
             setStatus("User saved. No import job was returned.", "error");
         }
@@ -113,66 +255,110 @@ async function search() {
     } finally {
         if (isCurrent(token)) {
             setBusy(false);
+            lookupController = null;
         }
     }
 }
 
-function startPolling(initialJob, token, signal) {
-    renderJob(initialJob);
+function startPolling(job, token) {
+    lastJob = job;
+    pollDeadline = Date.now() + POLL_TIMEOUT_MS;
+    renderJob(job);
 
-    const deadline = Date.now() + POLL_TIMEOUT_MS;
+    if (onImportRoute()) {
+        void pollOnce(token);
+    }
+}
 
-    const poll = async () => {
-        if (!isCurrent(token)) {
+async function pollOnce(token) {
+    if (token !== importToken || !onImportRoute() || !lastJob) {
+        return;
+    }
+    if (Date.now() > pollDeadline) {
+        setStatus(
+            "The import is taking longer than expected. You can check back later.",
+            "error",
+        );
+        return;
+    }
+
+    pollController?.abort();
+    const controller = new AbortController();
+    pollController = controller;
+    let shouldContinue = true;
+
+    try {
+        const response = await fetch(jobURL(lastJob.id), {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+        });
+        if (token !== importToken || !onImportRoute()) {
             return;
         }
-        if (Date.now() > deadline) {
-            setStatus(
-                "The import is taking longer than expected. You can check back later.",
-                "error",
-            );
-            return;
-        }
 
-        try {
-            const response = await fetch(jobURL(initialJob.id), {
-                headers: { Accept: "application/json" },
-                signal,
-            });
-            if (!isCurrent(token)) {
+        if (response.status === 200) {
+            const currentJob = await response.json();
+            if (token !== importToken || !onImportRoute()) {
                 return;
             }
-
-            if (response.status === 200) {
-                const currentJob = await response.json();
-                if (!isCurrent(token)) {
-                    return;
-                }
-                renderJob(currentJob);
-                if (
-                    currentJob.status === "succeeded" ||
-                    currentJob.status === "failed"
-                ) {
-                    return;
-                }
-            } else if (response.status === 404) {
-                jobStatus.textContent = "Import job not found.";
-                setStatus("Import job not found.", "error");
-                return;
-            } else {
-                jobStatus.textContent = "Could not read import status; retrying…";
+            lastJob = currentJob;
+            renderJob(currentJob);
+            if (currentJob.status === "succeeded" || currentJob.status === "failed") {
+                shouldContinue = false;
             }
-        } catch (error) {
-            if (isAbort(error) || !isCurrent(token)) {
-                return;
-            }
+        } else if (response.status === 404) {
+            jobStatus.textContent = "Import job not found.";
+            setStatus("Import job not found.", "error");
+            lastJob = null;
+            shouldContinue = false;
+        } else {
             jobStatus.textContent = "Could not read import status; retrying…";
         }
+    } catch (error) {
+        if (isAbort(error) || token !== importToken || !onImportRoute()) {
+            return;
+        }
+        jobStatus.textContent = "Could not read import status; retrying…";
+    } finally {
+        if (pollController === controller) {
+            pollController = null;
+        }
+    }
 
-        setTimeout(poll, POLL_INTERVAL_MS);
-    };
+    if (shouldContinue && token === importToken && onImportRoute()) {
+        pollTimer = setTimeout(() => {
+            pollTimer = null;
+            void pollOnce(token);
+        }, POLL_INTERVAL_MS);
+    }
+}
 
-    void poll();
+function stopPolling() {
+    if (pollTimer !== null) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+    }
+    pollController?.abort();
+    pollController = null;
+}
+
+function enterImport() {
+    if (lastJob && (lastJob.status === "queued" || lastJob.status === "running")) {
+        void pollOnce(importToken);
+    }
+}
+
+function leaveImport() {
+    lookupController?.abort();
+    if (lookupBusy) {
+        setBusy(false);
+        setStatus("");
+    }
+    stopPolling();
+}
+
+function onImportRoute() {
+    return currentRoute === "import";
 }
 
 function renderJob(job) {
@@ -220,9 +406,9 @@ function showSteamUser(steamUser, source) {
     // Steam IDs exceed JavaScript's safe integer range, so keep the value as
     // text and never convert it to a number.
     steamID.textContent =
-        steamUser.steam_id === null || steamUser.steam_id === undefined
+        steamUser.steamId === null || steamUser.steamId === undefined
             ? ""
-            : String(steamUser.steam_id);
+            : String(steamUser.steamId);
     resultSource.textContent =
         source === "database" ? "Stored in the database" : "Resolved with Steam";
     result.hidden = false;
@@ -256,6 +442,7 @@ function setStatus(message, state) {
 }
 
 function setBusy(busy) {
+    lookupBusy = busy;
     input.disabled = busy;
     button.disabled = busy;
 }
@@ -296,9 +483,941 @@ function errorMessage(error) {
 }
 
 function isCurrent(token) {
-    return token === searchToken;
+    return token === importToken;
 }
 
 function isAbort(error) {
     return error?.name === "AbortError";
 }
+
+async function performSearch() {
+    const token = ++searchToken;
+    searchController?.abort();
+    const controller = new AbortController();
+    searchController = controller;
+
+    const name = searchInput.value.trim();
+    if (!name) {
+        clearSearchResults();
+        setSearchStatus("Enter a Steam name.", "error");
+        searchInput.focus();
+        return;
+    }
+
+    setSearchBusy(true);
+    setSearchStatus(`Searching for “${name}”…`);
+
+    try {
+        const response = await fetch(
+            `/api/steamusers/search?name=${encodeURIComponent(name)}`,
+            {
+                headers: { Accept: "application/json" },
+                signal: controller.signal,
+            },
+        );
+        if (!isSearchCurrent(token)) {
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (!isSearchCurrent(token)) {
+            return;
+        }
+
+        searchUsers = Array.isArray(body.steamUsers) ? body.steamUsers : [];
+        resetSearchControls();
+
+        if (searchUsers.length === 0) {
+            clearSearchResults();
+            setSearchStatus(`No users match “${name}”.`);
+            return;
+        }
+
+        searchControls.hidden = false;
+        setSearchStatus("");
+        renderSearchPipeline();
+    } catch (error) {
+        if (isAbort(error) || !isSearchCurrent(token)) {
+            return;
+        }
+        clearSearchResults();
+        setSearchStatus(errorMessage(error), "error");
+    } finally {
+        if (isSearchCurrent(token)) {
+            setSearchBusy(false);
+            searchController = null;
+        }
+    }
+}
+
+function clearSearchResults() {
+    searchUsers = [];
+    searchResults.replaceChildren();
+    searchResults.hidden = true;
+    searchControls.hidden = true;
+    searchCount.textContent = "";
+    searchCount.hidden = true;
+}
+
+function renderSearchPipeline() {
+    if (searchUsers.length === 0) {
+        searchResults.hidden = true;
+        searchControls.hidden = true;
+        return;
+    }
+
+    searchControls.hidden = false;
+    const visible = visibleSearchUsers();
+
+    searchResults.replaceChildren(...visible.map(buildSearchResult));
+    searchResults.hidden = visible.length === 0;
+
+    const hiddenCount = searchUsers.length - visible.length;
+    if (hiddenCount > 0) {
+        searchCount.textContent = `Showing ${visible.length} of ${searchUsers.length} users`;
+        searchCount.hidden = false;
+    } else {
+        searchCount.textContent = "";
+        searchCount.hidden = true;
+    }
+}
+
+function visibleSearchUsers() {
+    const visible = searchUsers.filter(matchesSearchFilters);
+    const direction = searchDirection.value === "desc" ? -1 : 1;
+    const sort = searchSort.value;
+
+    visible.sort((left, right) => {
+        const primary = compareSearchField(left, right, sort);
+        if (primary !== 0) {
+            return primary * direction;
+        }
+        const byName = compareSearchNames(left, right);
+        if (byName !== 0) {
+            return byName;
+        }
+        return String(left.steamId).localeCompare(String(right.steamId));
+    });
+
+    return visible;
+}
+
+function compareSearchField(left, right, field) {
+    switch (field) {
+        case "updated":
+            return compareSearchDates(left, right);
+        case "owned":
+            return countValue(left.ownedAppCount) - countValue(right.ownedAppCount);
+        case "wishlist":
+            return countValue(left.wishlistAppCount) - countValue(right.wishlistAppCount);
+        case "name":
+        default:
+            return compareSearchNames(left, right);
+    }
+}
+
+function compareSearchNames(left, right) {
+    return String(left.name ?? "").localeCompare(String(right.name ?? ""), undefined, {
+        sensitivity: "base",
+    });
+}
+
+function compareSearchDates(left, right) {
+    const leftTime = Date.parse(left.updatedAt ?? "");
+    const rightTime = Date.parse(right.updatedAt ?? "");
+    return (Number.isNaN(leftTime) ? 0 : leftTime) - (Number.isNaN(rightTime) ? 0 : rightTime);
+}
+
+function countValue(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+}
+
+function matchesSearchFilters(user) {
+    const wishlist = searchWishlist.value;
+    if (wishlist === "public" && user.wishlistPrivate) {
+        return false;
+    }
+    if (wishlist === "private" && !user.wishlistPrivate) {
+        return false;
+    }
+
+    return true;
+}
+
+// Map the latest import job status onto the status shown in the UI.
+function importStatus(latestStatus) {
+    switch (latestStatus) {
+        case "queued":
+            return { label: "Pending", tone: "queued" };
+        case "running":
+            return { label: "Processing", tone: "running" };
+        case "succeeded":
+            return { label: "Available", tone: "succeeded" };
+        default:
+            return { label: "Out-of-Date", tone: "out-of-date" };
+    }
+}
+
+function resetSearchControls() {
+    searchSort.value = "name";
+    searchDirection.value = SEARCH_SORT_DEFAULT_DIRECTIONS.name;
+    searchWishlist.value = "all";
+}
+
+function buildSearchResult(user) {
+    const item = newElement("li", "result");
+
+    const main = newElement("div", "result__main");
+    const heading = newElement("div", "result__heading");
+    heading.append(newElement("p", "result__name", user.name ?? ""));
+    main.append(heading);
+    main.append(newElement("p", "result__id", `Steam ID ${user.steamId ?? ""}`));
+
+    const status = importStatus(user.latestImportStatus ?? null);
+    const stats = newElement("dl", "result__stats");
+    stats.append(
+        searchStat("Owned apps", formatCount(user.ownedAppCount)),
+        searchStat("Wishlist apps", formatCount(user.wishlistAppCount)),
+        searchStatNode(
+            "Wishlist",
+            badge(
+                user.wishlistPrivate ? "Private" : "Public",
+                user.wishlistPrivate ? "private" : "public",
+            ),
+        ),
+        searchStatNode("Status", badge(status.label, status.tone)),
+    );
+    main.append(stats);
+
+    const link = newElement("a", "result__link", "View user");
+    link.href = `/user?name=${encodeURIComponent(user.name ?? "")}`;
+    link.dataset.route = "/user";
+
+    item.append(main, link);
+    return item;
+}
+
+function searchStat(label, value) {
+    const row = newElement("div", "result__stat");
+    row.append(newElement("dt", "", label), newElement("dd", "", value));
+    return row;
+}
+
+function searchStatNode(label, node) {
+    const row = newElement("div", "result__stat");
+    const value = newElement("dd");
+    value.append(node);
+    row.append(newElement("dt", "", label), value);
+    return row;
+}
+
+function badge(text, status) {
+    const node = newElement("span", "badge", text);
+    node.dataset.status = status;
+    return node;
+}
+
+function newElement(tag, className, text) {
+    const element = document.createElement(tag);
+    if (className) {
+        element.className = className;
+    }
+    if (text !== undefined) {
+        element.textContent = text;
+    }
+    return element;
+}
+
+function setSearchStatus(message, state) {
+    searchStatus.textContent = message;
+    if (state) {
+        searchStatus.dataset.state = state;
+    } else {
+        delete searchStatus.dataset.state;
+    }
+}
+
+function setSearchBusy(busy) {
+    searchBusy = busy;
+    searchInput.disabled = busy;
+    searchButton.disabled = busy;
+}
+
+function isSearchCurrent(token) {
+    return token === searchToken;
+}
+
+function leaveSearch() {
+    searchController?.abort();
+    if (searchBusy) {
+        setSearchBusy(false);
+        setSearchStatus("");
+    }
+}
+
+function enterUser() {
+    const parsed = parseUserQuery(location.search);
+
+    userState.name = parsed.name;
+    userState.list = parsed.list;
+    userState.page = parsed.page;
+    userState.pageSize = parsed.pageSize;
+    userState.pages = { owned: 1, wishlist: 1 };
+    userState.pages[parsed.list] = parsed.page;
+    userState.data = null;
+
+    userController?.abort();
+    userController = null;
+    userToken += 1;
+
+    userInput.value = parsed.name;
+    userPageSize.value = String(parsed.pageSize);
+    setActiveTab(parsed.list);
+    setUserLoading(false);
+    clearUserView();
+
+    if (!parsed.name) {
+        setUserStatus("");
+        return;
+    }
+
+    syncUserURL();
+    void loadUser();
+}
+
+function leaveUser() {
+    userController?.abort();
+    userController = null;
+    userToken += 1;
+}
+
+function parseUserQuery(search) {
+    const params = new URLSearchParams(search);
+    const name = (params.get("name") ?? "").trim();
+    const list = params.get("list") === "wishlist" ? "wishlist" : "owned";
+    const page = parsePositiveInteger(params.get("page"), 1);
+    const pageSize = userPageSizeFromValue(params.get("pageSize"));
+
+    return { name, list, page, pageSize };
+}
+
+function parsePositiveInteger(value, fallback) {
+    const number = Number(value);
+    return Number.isInteger(number) && number >= 1 ? number : fallback;
+}
+
+function userPageSizeFromValue(value) {
+    const number = Number(value);
+    return APP_PAGE_SIZES.includes(number) ? number : 25;
+}
+
+function buildUserURL(name, list, page, pageSize) {
+    const query = [
+        `name=${encodeURIComponent(name)}`,
+        `list=${encodeURIComponent(list)}`,
+        `page=${page}`,
+        `pageSize=${pageSize}`,
+    ];
+    return `/user?${query.join("&")}`;
+}
+
+function pushUserURL(name, list, page, pageSize) {
+    const url = buildUserURL(name, list, page, pageSize);
+    if (url !== location.pathname + location.search + location.hash) {
+        history.pushState({}, "", url);
+        currentHref = url;
+    }
+
+    userState.name = name;
+    userState.list = list;
+    userState.page = page;
+    userState.pageSize = pageSize;
+    userState.pages[list] = page;
+
+    userInput.value = name;
+    userPageSize.value = String(pageSize);
+    setActiveTab(list);
+    void loadUser();
+}
+
+function syncUserURL() {
+    if (!userState.name) {
+        return;
+    }
+
+    const url = buildUserURL(userState.name, userState.list, userState.page, userState.pageSize);
+    if (url !== location.pathname + location.search + location.hash) {
+        history.replaceState({}, "", url);
+        currentHref = url;
+    }
+}
+
+function selectUserList(list) {
+    if (!userState.name) {
+        setActiveTab(list);
+        return;
+    }
+    if (userState.list === list) {
+        return;
+    }
+
+    const page = userState.pages[list] ?? 1;
+    userState.pages[list] = page;
+    pushUserURL(userState.name, list, page, userState.pageSize);
+}
+
+function goToUserPage(page) {
+    if (!userState.name || page === userState.page) {
+        return;
+    }
+
+    const totalPages = countValue(userState.data?.totalPages);
+    if (!Number.isInteger(page) || page < 1 || page > totalPages) {
+        return;
+    }
+
+    userState.pages[userState.list] = page;
+    pushUserURL(userState.name, userState.list, page, userState.pageSize);
+}
+
+async function loadUser() {
+    const token = ++userToken;
+    userController?.abort();
+    const controller = new AbortController();
+    userController = controller;
+
+    if (!userState.name) {
+        setUserLoading(false);
+        clearUserView();
+        setUserStatus("");
+        userController = null;
+        return;
+    }
+
+    setUserLoading(true);
+    setUserStatus(`Loading “${userState.name}”…`);
+
+    const params = new URLSearchParams({
+        name: userState.name,
+        list: userState.list,
+        page: String(userState.page),
+        pageSize: String(userState.pageSize),
+    });
+
+    try {
+        const response = await fetch(
+            `/api/steamusers/by-name?${params.toString()}`,
+            {
+                headers: { Accept: "application/json" },
+                signal: controller.signal,
+            },
+        );
+        if (!isUserCurrent(token)) {
+            return;
+        }
+
+        if (response.status === 404) {
+            clearUserView();
+            setUserLoading(false);
+            showUserNotFound();
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (!isUserCurrent(token)) {
+            return;
+        }
+
+        applyUserResponse(body);
+        setUserStatus("");
+    } catch (error) {
+        if (isAbort(error) || !isUserCurrent(token)) {
+            return;
+        }
+        setUserStatus(errorMessage(error), "error");
+    } finally {
+        if (isUserCurrent(token)) {
+            setUserLoading(false);
+            userController = null;
+        }
+    }
+}
+
+function applyUserResponse(body) {
+    const user = body?.steamUser;
+    if (!user) {
+        throw new Error("The server did not return a Steam user.");
+    }
+
+    userState.data = body;
+
+    if (typeof user.name === "string" && user.name !== "") {
+        userState.name = user.name;
+        userInput.value = user.name;
+    }
+    userState.list = body.list === "wishlist" ? "wishlist" : "owned";
+    userState.page = parsePositiveInteger(body.page, 1);
+    userState.pageSize = userPageSizeFromValue(body.pageSize);
+    userState.pages[userState.list] = userState.page;
+
+    userPageSize.value = String(userState.pageSize);
+    setActiveTab(userState.list);
+
+    renderUserSummary(body);
+    renderUserApps(body);
+    syncUserURL();
+}
+
+function renderUserSummary(data) {
+    const user = data.steamUser;
+    const latest = data.latestImport ?? null;
+
+    userSummary.hidden = false;
+    const status = importStatus(latest?.status ?? null);
+    userStatusBadge.textContent = status.label;
+    userStatusBadge.dataset.status = status.tone;
+
+    const rows = [
+        detailRow("Steam name", user.name ?? ""),
+        // Steam IDs exceed JavaScript's safe integer range, so keep them as text.
+        detailRow(
+            "Steam ID",
+            user.steamId === null || user.steamId === undefined
+                ? ""
+                : String(user.steamId),
+        ),
+        detailRowNode(
+            "Wishlist privacy",
+            badge(
+                user.wishlistPrivate ? "Private" : "Public",
+                user.wishlistPrivate ? "private" : "public",
+            ),
+        ),
+        detailRow("Owned apps", formatCount(data.ownedAppCount ?? 0)),
+        detailRow("Wishlist apps", formatCount(data.wishlistAppCount ?? 0)),
+    ];
+
+    if (latest?.error) {
+        rows.push(detailRow("Import error", latest.error));
+    }
+
+    userSummaryDetails.replaceChildren(...rows);
+
+    if (user.wishlistPrivate) {
+        userSummaryNotice.textContent =
+            "This user's wishlist is private; imported wishlist data may be incomplete.";
+        userSummaryNotice.hidden = false;
+    } else {
+        userSummaryNotice.textContent = "";
+        userSummaryNotice.hidden = true;
+    }
+}
+
+function renderUserApps(data) {
+    const list = data.list === "wishlist" ? "wishlist" : "owned";
+    const apps = Array.isArray(data.apps) ? data.apps : [];
+    const total = countValue(data.total);
+    const page = parsePositiveInteger(data.page, 1);
+    const totalPages = countValue(data.totalPages);
+
+    userApps.hidden = false;
+    ownedTabCount.textContent = formatCount(data.ownedAppCount ?? 0);
+    wishlistTabCount.textContent = formatCount(data.wishlistAppCount ?? 0);
+
+    if (total === 0) {
+        userListCount.textContent =
+            list === "wishlist" ? "No wishlist apps." : "No owned apps.";
+    } else {
+        const noun = total === 1 ? "app" : "apps";
+        userListCount.textContent = `Page ${page} of ${totalPages} · ${formatCount(
+            total,
+        )} ${list} ${noun}`;
+    }
+
+    userAppRows.replaceChildren(...apps.map(buildUserAppRow));
+    renderUserPagination(data);
+}
+
+function buildUserAppRow(app) {
+    const row = document.createElement("tr");
+
+    const nameCell = newElement("td", "app-cell");
+    const body = newElement("div", "app-cell__body");
+    if (app.headerImage) {
+        const image = newElement("img", "app-cell__image");
+        image.src = app.headerImage;
+        image.alt = "";
+        image.loading = "lazy";
+        body.append(image);
+    }
+    body.append(newElement("span", "app-cell__name", app.name ?? "Unknown app"));
+    nameCell.append(body);
+
+    const idCell = newElement("td", "app-id", String(app.appId ?? ""));
+    const storeCell = newElement("td", "app-store");
+    const storeLink = newElement("a", "", "Steam");
+    storeLink.href = `https://store.steampowered.com/app/${encodeURIComponent(app.appId)}/`;
+    storeLink.target = "_blank";
+    storeLink.rel = "noopener noreferrer";
+    storeCell.append(storeLink);
+
+    row.append(nameCell, idCell, storeCell);
+    return row;
+}
+
+function renderUserPagination(data) {
+    userPagination.replaceChildren();
+
+    const current = parsePositiveInteger(data.page, 1);
+    const totalPages = countValue(data.totalPages);
+    const hasPages = totalPages > 0;
+
+    userPagination.append(
+        paginationButton("Previous", current - 1, current <= 1 || !hasPages, "Previous page"),
+    );
+
+    if (hasPages) {
+        for (const item of paginationItems(current, totalPages)) {
+            if (item === "ellipsis") {
+                const ellipsis = newElement("span", "pagination__ellipsis", "…");
+                ellipsis.setAttribute("aria-hidden", "true");
+                userPagination.append(ellipsis);
+                continue;
+            }
+
+            const button = paginationButton(String(item), item, false, `Page ${item}`);
+            if (item === current) {
+                button.setAttribute("aria-current", "page");
+                button.disabled = true;
+            }
+            userPagination.append(button);
+        }
+    }
+
+    userPagination.append(
+        paginationButton("Next", current + 1, !hasPages || current >= totalPages, "Next page"),
+    );
+}
+
+function paginationButton(text, page, disabled, label) {
+    const button = newElement("button", "pagination__button", text);
+    button.type = "button";
+    button.disabled = disabled;
+    button.setAttribute("aria-label", label);
+    button.addEventListener("click", () => goToUserPage(page));
+    return button;
+}
+
+function paginationItems(current, totalPages) {
+    if (totalPages <= 7) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const items = [1];
+    const start = Math.max(2, current - 1);
+    const end = Math.min(totalPages - 1, current + 1);
+
+    if (start > 2) {
+        items.push("ellipsis");
+    }
+    for (let page = start; page <= end; page += 1) {
+        items.push(page);
+    }
+    if (end < totalPages - 1) {
+        items.push("ellipsis");
+    }
+    items.push(totalPages);
+
+    return items;
+}
+
+function setActiveTab(list) {
+    const wishlist = list === "wishlist";
+    tabOwned.setAttribute("aria-selected", String(!wishlist));
+    tabWishlist.setAttribute("aria-selected", String(wishlist));
+    userAppPanel.setAttribute("aria-labelledby", wishlist ? "tab-wishlist" : "tab-owned");
+}
+
+function clearUserView() {
+    userState.data = null;
+    userSummary.hidden = true;
+    userApps.hidden = true;
+    userSummaryDetails.replaceChildren();
+    userSummaryNotice.textContent = "";
+    userSummaryNotice.hidden = true;
+    ownedTabCount.textContent = "0";
+    wishlistTabCount.textContent = "0";
+    userListCount.textContent = "";
+    userAppRows.replaceChildren();
+    userPagination.replaceChildren();
+}
+
+function setUserLoading(loading) {
+    userSummary.setAttribute("aria-busy", String(loading));
+    userApps.setAttribute("aria-busy", String(loading));
+}
+
+function setUserStatus(message, state) {
+    userStatus.replaceChildren();
+    userStatus.textContent = message;
+    if (state) {
+        userStatus.dataset.state = state;
+    } else {
+        delete userStatus.dataset.state;
+    }
+}
+
+function showUserNotFound() {
+    userStatus.replaceChildren();
+    userStatus.dataset.state = "error";
+    userStatus.append(document.createTextNode("Steam user not found. "));
+
+    const link = newElement("a", "", "Search Users");
+    link.href = "/search";
+    link.dataset.route = "/search";
+    userStatus.append(link);
+}
+
+function isUserCurrent(token) {
+    return token === userToken;
+}
+
+function detailRow(label, value) {
+    const row = newElement("div", "details__row");
+    row.append(newElement("dt", "", label), newElement("dd", "", value));
+    return row;
+}
+
+function detailRowNode(label, node) {
+    const row = newElement("div", "details__row");
+    const value = newElement("dd");
+    value.append(node);
+    row.append(newElement("dt", "", label), value);
+    return row;
+}
+
+function enterDashboard() {
+    void loadDashboard();
+}
+
+function leaveDashboard() {
+    stopDashboardRefresh();
+    dashboardController?.abort();
+    dashboardController = null;
+}
+
+function onDashboardRoute() {
+    return currentRoute === "dashboard";
+}
+
+function stopDashboardRefresh() {
+    if (dashboardTimer !== null) {
+        clearTimeout(dashboardTimer);
+        dashboardTimer = null;
+    }
+}
+
+function scheduleDashboardRefresh() {
+    stopDashboardRefresh();
+    if (!onDashboardRoute() || document.visibilityState !== "visible") {
+        return;
+    }
+    dashboardTimer = setTimeout(() => {
+        dashboardTimer = null;
+        void loadDashboard();
+    }, DASHBOARD_REFRESH_MS);
+}
+
+async function loadDashboard() {
+    stopDashboardRefresh();
+    dashboardController?.abort();
+    const controller = new AbortController();
+    dashboardController = controller;
+
+    try {
+        const response = await fetch("/api/dashboard", {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+        });
+        if (controller.signal.aborted) {
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (controller.signal.aborted) {
+            return;
+        }
+
+        renderDashboard(body);
+        dashboardMetrics.setAttribute("aria-busy", "false");
+        setDashboardStatus("");
+        dashboardUpdated.textContent = `Updated at ${formatClock(new Date())}`;
+    } catch (error) {
+        if (isAbort(error) || controller.signal.aborted) {
+            return;
+        }
+        dashboardMetrics.setAttribute("aria-busy", "false");
+        setDashboardStatus("Could not refresh the dashboard; retrying…", "error");
+    } finally {
+        if (dashboardController === controller) {
+            dashboardController = null;
+        }
+    }
+
+    scheduleDashboardRefresh();
+}
+
+function renderDashboard(stats) {
+    metricUsers.textContent = formatCount(stats?.totalSteamUsers);
+    metricApps.textContent = formatCount(stats?.totalApps);
+    metricRunning.textContent = formatCount(stats?.importJobs?.running);
+    metricQueued.textContent = formatCount(stats?.importJobs?.queued);
+}
+
+function formatCount(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? numberFormatter.format(number) : "—";
+}
+
+function formatClock(date) {
+    return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    });
+}
+
+function setDashboardStatus(message, state) {
+    dashboardStatus.textContent = message;
+    if (state) {
+        dashboardStatus.dataset.state = state;
+    } else {
+        delete dashboardStatus.dataset.state;
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (!onDashboardRoute()) {
+        return;
+    }
+    if (document.visibilityState === "visible") {
+        void loadDashboard();
+    } else {
+        stopDashboardRefresh();
+        dashboardController?.abort();
+        dashboardController = null;
+    }
+});
+
+const pageLifecycles = {
+    dashboard: { enter: enterDashboard, leave: leaveDashboard },
+    import: { enter: enterImport, leave: leaveImport },
+    search: { leave: leaveSearch },
+    user: { enter: enterUser, leave: leaveUser },
+};
+
+function onRouteChange(previous, next) {
+    const previousPage = previous ? pageLifecycles[previous] : null;
+    if (previousPage?.leave) {
+        previousPage.leave();
+    }
+    const nextPage = pageLifecycles[next];
+    if (nextPage?.enter) {
+        nextPage.enter();
+    }
+}
+
+function renderRoute() {
+    const path = normalizePath(location.pathname);
+    const routePath = ROUTES.has(path) ? path : "/";
+    if (!ROUTES.has(path)) {
+        history.replaceState({}, "", "/");
+    }
+
+    const route = ROUTES.get(routePath);
+    const previous = currentRoute;
+    const href = location.pathname + location.search + location.hash;
+    const changed = previous !== route || currentHref !== href;
+    currentRoute = route;
+    currentHref = href;
+
+    let activeSection = null;
+    for (const section of viewSections) {
+        const isActive = section.dataset.view === routePath;
+        section.hidden = !isActive;
+        if (isActive) {
+            activeSection = section;
+        }
+    }
+
+    for (const link of navLinks) {
+        if (link.dataset.route === routePath) {
+            link.setAttribute("aria-current", "page");
+        } else {
+            link.removeAttribute("aria-current");
+        }
+    }
+
+    document.title = `${ROUTE_TITLES[route]} · Steam Decision Engine`;
+
+    if (changed) {
+        onRouteChange(previous, route);
+    }
+
+    if (previous !== route) {
+        activeSection?.querySelector("h1")?.focus({ preventScroll: true });
+    }
+}
+
+function normalizePath(pathname) {
+    if (pathname === "/") {
+        return "/";
+    }
+    return pathname.replace(/\/+$/, "") || "/";
+}
+
+function handleRouteClick(event) {
+    if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+    ) {
+        return;
+    }
+
+    const anchor = event.target.closest("a[data-route]");
+    if (!anchor) {
+        return;
+    }
+
+    const url = new URL(anchor.href, location.href);
+    if (url.origin !== location.origin) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const target = url.pathname + url.search + url.hash;
+    const current = location.pathname + location.search + location.hash;
+    if (target !== current) {
+        history.pushState({}, "", target);
+    }
+    renderRoute();
+}
+
+document.addEventListener("click", handleRouteClick);
+window.addEventListener("popstate", renderRoute);
+renderRoute();

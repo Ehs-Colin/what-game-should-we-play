@@ -39,3 +39,19 @@ JOIN app_alias aa ON aa.app_id = a.steam_appid
 JOIN steam_user_wishlist suw ON suw.app_id = aa.alias_id
 WHERE suw.steam_id = $1 AND suw.removed = FALSE
 ORDER BY a.name;
+
+-- name: CountActiveSteamUserWishlist :one
+SELECT COUNT(DISTINCT aa.app_id)
+FROM steam_user_wishlist suw
+JOIN app_alias aa ON aa.alias_id = suw.app_id
+WHERE suw.steam_id = $1
+  AND suw.removed = FALSE;
+
+-- name: ListActiveSteamUserWishlistPage :many
+SELECT DISTINCT a.* FROM apps a
+JOIN app_alias aa ON aa.app_id = a.steam_appid
+JOIN steam_user_wishlist suw ON suw.app_id = aa.alias_id
+WHERE suw.steam_id = @steam_id
+  AND suw.removed = FALSE
+ORDER BY a.name NULLS LAST, a.steam_appid
+LIMIT @page_size OFFSET @row_offset;

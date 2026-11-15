@@ -141,6 +141,13 @@ CREATE TABLE import_jobs (
 );
 CREATE INDEX import_jobs_steam_id_status ON import_jobs (steam_id, status);
 
+-- Exact case-insensitive name lookup (import page and View User).
+CREATE INDEX steam_users_name_lower ON steam_users (lower(name));
+
+-- Latest-job lookup; the existing index is (steam_id, status).
+CREATE INDEX import_jobs_steam_id_created_at
+    ON import_jobs (steam_id, created_at DESC, id DESC);
+
 -- +goose Down
 DROP TABLE steam_api_cache_calls;
 DROP TABLE steam_api_cache;
