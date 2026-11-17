@@ -25,10 +25,12 @@ const (
 
 // fakeApp describes what the fake Steam store returns for an owned ID.
 type fakeApp struct {
-	canonicalID int // 0 means the owned ID itself
-	name        string
-	categories  []steamapi.Category
-	genres      []steamapi.Genre
+	canonicalID       int // 0 means the owned ID itself
+	name              string
+	categories        []steamapi.Category
+	genres            []steamapi.Genre
+	releaseDate       string
+	releaseComingSoon bool
 }
 
 type fakeSteam struct {
@@ -165,6 +167,10 @@ func makeDetail(ownedID int, app fakeApp) *steamapi.AppDetail {
 			"categories":  app.categories,
 			"genres":      app.genres,
 			"platforms":   map[string]bool{"windows": true},
+			"release_date": map[string]any{
+				"date":        app.releaseDate,
+				"coming_soon": app.releaseComingSoon,
+			},
 		},
 	})
 	if err != nil {
@@ -382,9 +388,10 @@ func TestBasicImport(t *testing.T) {
 	env := newTestEnv(t)
 	env.steam.setOwned(testSteamID, 10)
 	env.steam.setApp(10, fakeApp{
-		name:       "Game Ten",
-		categories: []steamapi.Category{{ID: 2, Description: "Single-player"}, {ID: 1, Description: "Multi-player"}},
-		genres:     []steamapi.Genre{{ID: "1", Description: "Action"}},
+		name:        "Game Ten",
+		categories:  []steamapi.Category{{ID: 2, Description: "Single-player"}, {ID: 1, Description: "Multi-player"}},
+		genres:      []steamapi.Genre{{ID: "1", Description: "Action"}},
+		releaseDate: "21 Nov, 2024",
 	})
 
 	job := env.runImport(t, testSteamID)
@@ -401,6 +408,9 @@ func TestBasicImport(t *testing.T) {
 	if app.SteamAppid != 10 || app.Name.String != "Game Ten" || !app.UpdatedAt.Equal(env.clock.Now()) {
 		t.Fatalf("app = %+v", app)
 	}
+	if !app.ReleaseDateParsed.Valid || !app.ReleaseDateParsed.Time.Equal(time.Date(2024, time.November, 21, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("release_date_parsed = %+v, want 2024-11-21", app.ReleaseDateParsed)
+	}
 	alias, err := env.queries.GetAppAlias(ctx, 10)
 	if err != nil || alias.AppID != 10 {
 		t.Fatalf("self-alias = %+v, %v", alias, err)
@@ -414,6 +424,29 @@ func TestBasicImport(t *testing.T) {
 	active, err := env.queries.ListActiveSteamUserApps(ctx, testSteamID)
 	if err != nil || len(active) != 1 || active[0].SteamAppid != 10 {
 		t.Fatalf("active apps = %+v, %v", active, err)
+	}
+}
+
+func TestComingSoonAppHasNoParsedReleaseDate(t *testing.T) {
+	env := newTestEnv(t)
+	env.steam.setOwned(testSteamID, 10)
+	env.steam.setApp(10, fakeApp{
+		releaseDate:       "21 Nov, 2024",
+		releaseComingSoon: true,
+	})
+
+	job := env.runImport(t, testSteamID)
+	assertJob(t, job, StatusSucceeded, wantCounts{total: 1, processed: 1})
+
+	app, err := env.queries.GetAppByAlias(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("GetAppByAlias: %v", err)
+	}
+	if app.ReleaseDate.String != "21 Nov, 2024" {
+		t.Fatalf("release_date = %q", app.ReleaseDate.String)
+	}
+	if app.ReleaseDateParsed.Valid {
+		t.Fatalf("coming-soon release_date_parsed = %+v, want NULL", app.ReleaseDateParsed)
 	}
 }
 

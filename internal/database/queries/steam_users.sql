@@ -47,6 +47,20 @@ LEFT JOIN import_jobs latest ON latest.id = (
 WHERE strpos(lower(su.name), lower(sqlc.arg(name))) > 0
 ORDER BY su.name, su.steam_id;
 
+-- name: ListImportedSteamUsers :many
+SELECT
+    su.steam_id,
+    su.name,
+    EXISTS (
+        SELECT 1
+        FROM import_jobs ij
+        WHERE ij.steam_id = su.steam_id
+          AND ij.status = 'succeeded'
+    ) AS has_succeeded_import
+FROM steam_users su
+WHERE su.steam_id = ANY(@steam_ids::bigint[])
+ORDER BY su.steam_id;
+
 -- name: CreateSteamUser :one
 INSERT INTO steam_users (
     steam_id,

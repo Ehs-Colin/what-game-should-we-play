@@ -44,7 +44,7 @@ func (q *Queries) GetAppAlias(ctx context.Context, aliasID int32) (AppAlias, err
 }
 
 const getAppByAlias = `-- name: GetAppByAlias :one
-SELECT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
+SELECT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_date_parsed, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN app_alias aa ON aa.app_id = a.steam_appid
 WHERE aa.alias_id = $1
 LIMIT 1
@@ -70,6 +70,7 @@ func (q *Queries) GetAppByAlias(ctx context.Context, aliasID int32) (App, error)
 		&i.PlatformMac,
 		&i.PlatformLinux,
 		&i.ReleaseDate,
+		&i.ReleaseDateParsed,
 		&i.ReleaseComingSoon,
 		&i.CreatedAt,
 		&i.UpdatedAt,

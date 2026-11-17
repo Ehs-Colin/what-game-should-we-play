@@ -24,6 +24,7 @@ CREATE TABLE apps (
     platform_mac BOOLEAN,
     platform_linux BOOLEAN,
     release_date VARCHAR(255),
+    release_date_parsed DATE,
     release_coming_soon BOOLEAN,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL

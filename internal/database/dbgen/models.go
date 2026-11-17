@@ -26,6 +26,7 @@ type App struct {
 	PlatformMac          sql.NullBool   `json:"platform_mac"`
 	PlatformLinux        sql.NullBool   `json:"platform_linux"`
 	ReleaseDate          sql.NullString `json:"release_date"`
+	ReleaseDateParsed    sql.NullTime   `json:"release_date_parsed"`
 	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
 	CreatedAt            time.Time      `json:"created_at"`
 	UpdatedAt            time.Time      `json:"updated_at"`

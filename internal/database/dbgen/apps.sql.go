@@ -29,6 +29,7 @@ INSERT INTO apps (
     platform_mac,
     platform_linux,
     release_date,
+    release_date_parsed,
     release_coming_soon,
     updated_at,
     created_at
@@ -50,9 +51,10 @@ INSERT INTO apps (
     $15,
     $16,
     $17,
+    $18,
     NOW(),
     NOW()
-) RETURNING steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_coming_soon, created_at, updated_at
+) RETURNING steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_date_parsed, release_coming_soon, created_at, updated_at
 `
 
 type CreateAppParams struct {
@@ -72,6 +74,7 @@ type CreateAppParams struct {
 	PlatformMac          sql.NullBool   `json:"platform_mac"`
 	PlatformLinux        sql.NullBool   `json:"platform_linux"`
 	ReleaseDate          sql.NullString `json:"release_date"`
+	ReleaseDateParsed    sql.NullTime   `json:"release_date_parsed"`
 	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
 }
 
@@ -93,6 +96,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		arg.PlatformMac,
 		arg.PlatformLinux,
 		arg.ReleaseDate,
+		arg.ReleaseDateParsed,
 		arg.ReleaseComingSoon,
 	)
 	var i App
@@ -113,6 +117,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		&i.PlatformMac,
 		&i.PlatformLinux,
 		&i.ReleaseDate,
+		&i.ReleaseDateParsed,
 		&i.ReleaseComingSoon,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -130,7 +135,7 @@ func (q *Queries) DeleteApp(ctx context.Context, steamAppid int32) error {
 }
 
 const getApp = `-- name: GetApp :one
-SELECT steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_coming_soon, created_at, updated_at FROM apps WHERE steam_appid = $1 LIMIT 1
+SELECT steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_date_parsed, release_coming_soon, created_at, updated_at FROM apps WHERE steam_appid = $1 LIMIT 1
 `
 
 func (q *Queries) GetApp(ctx context.Context, steamAppid int32) (App, error) {
@@ -153,6 +158,7 @@ func (q *Queries) GetApp(ctx context.Context, steamAppid int32) (App, error) {
 		&i.PlatformMac,
 		&i.PlatformLinux,
 		&i.ReleaseDate,
+		&i.ReleaseDateParsed,
 		&i.ReleaseComingSoon,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -161,7 +167,7 @@ func (q *Queries) GetApp(ctx context.Context, steamAppid int32) (App, error) {
 }
 
 const listApps = `-- name: ListApps :many
-SELECT steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_coming_soon, created_at, updated_at FROM apps ORDER BY name
+SELECT steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_date_parsed, release_coming_soon, created_at, updated_at FROM apps ORDER BY name
 `
 
 func (q *Queries) ListApps(ctx context.Context) ([]App, error) {
@@ -190,6 +196,7 @@ func (q *Queries) ListApps(ctx context.Context) ([]App, error) {
 			&i.PlatformMac,
 			&i.PlatformLinux,
 			&i.ReleaseDate,
+			&i.ReleaseDateParsed,
 			&i.ReleaseComingSoon,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -224,11 +231,12 @@ UPDATE apps SET
     platform_mac = $14,
     platform_linux = $15,
     release_date = $16,
-    release_coming_soon = $17,
+    release_date_parsed = $17,
+    release_coming_soon = $18,
     updated_at = NOW(),
     created_at = NOW()
 WHERE steam_appid = $1
-RETURNING steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_coming_soon, created_at, updated_at
+RETURNING steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_date_parsed, release_coming_soon, created_at, updated_at
 `
 
 type UpdateAppParams struct {
@@ -248,6 +256,7 @@ type UpdateAppParams struct {
 	PlatformMac          sql.NullBool   `json:"platform_mac"`
 	PlatformLinux        sql.NullBool   `json:"platform_linux"`
 	ReleaseDate          sql.NullString `json:"release_date"`
+	ReleaseDateParsed    sql.NullTime   `json:"release_date_parsed"`
 	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
 }
 
@@ -269,6 +278,7 @@ func (q *Queries) UpdateApp(ctx context.Context, arg UpdateAppParams) (App, erro
 		arg.PlatformMac,
 		arg.PlatformLinux,
 		arg.ReleaseDate,
+		arg.ReleaseDateParsed,
 		arg.ReleaseComingSoon,
 	)
 	var i App
@@ -289,6 +299,7 @@ func (q *Queries) UpdateApp(ctx context.Context, arg UpdateAppParams) (App, erro
 		&i.PlatformMac,
 		&i.PlatformLinux,
 		&i.ReleaseDate,
+		&i.ReleaseDateParsed,
 		&i.ReleaseComingSoon,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -314,6 +325,7 @@ INSERT INTO apps (
     platform_mac,
     platform_linux,
     release_date,
+    release_date_parsed,
     release_coming_soon,
     updated_at,
     created_at
@@ -336,7 +348,8 @@ INSERT INTO apps (
     $16,
     $17,
     $18,
-    $18
+    $19,
+    $19
 )
 ON CONFLICT (steam_appid) DO UPDATE SET
     name = EXCLUDED.name,
@@ -354,9 +367,10 @@ ON CONFLICT (steam_appid) DO UPDATE SET
     platform_mac = EXCLUDED.platform_mac,
     platform_linux = EXCLUDED.platform_linux,
     release_date = EXCLUDED.release_date,
+    release_date_parsed = EXCLUDED.release_date_parsed,
     release_coming_soon = EXCLUDED.release_coming_soon,
     updated_at = EXCLUDED.updated_at
-RETURNING steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_coming_soon, created_at, updated_at
+RETURNING steam_appid, name, detailed_description, about_the_game, short_description, header_image, website, price_currency, price_initial, price_final, price_discount_percent, price_final_formatted, platform_windows, platform_mac, platform_linux, release_date, release_date_parsed, release_coming_soon, created_at, updated_at
 `
 
 type UpsertAppParams struct {
@@ -376,6 +390,7 @@ type UpsertAppParams struct {
 	PlatformMac          sql.NullBool   `json:"platform_mac"`
 	PlatformLinux        sql.NullBool   `json:"platform_linux"`
 	ReleaseDate          sql.NullString `json:"release_date"`
+	ReleaseDateParsed    sql.NullTime   `json:"release_date_parsed"`
 	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
 	UpdatedAt            time.Time      `json:"updated_at"`
 }
@@ -398,6 +413,7 @@ func (q *Queries) UpsertApp(ctx context.Context, arg UpsertAppParams) (App, erro
 		arg.PlatformMac,
 		arg.PlatformLinux,
 		arg.ReleaseDate,
+		arg.ReleaseDateParsed,
 		arg.ReleaseComingSoon,
 		arg.UpdatedAt,
 	)
@@ -419,6 +435,7 @@ func (q *Queries) UpsertApp(ctx context.Context, arg UpsertAppParams) (App, erro
 		&i.PlatformMac,
 		&i.PlatformLinux,
 		&i.ReleaseDate,
+		&i.ReleaseDateParsed,
 		&i.ReleaseComingSoon,
 		&i.CreatedAt,
 		&i.UpdatedAt,

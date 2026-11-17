@@ -70,7 +70,7 @@ func (q *Queries) CountActiveSteamUserWishlist(ctx context.Context, steamID int6
 }
 
 const listActiveSteamUserWishlist = `-- name: ListActiveSteamUserWishlist :many
-SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
+SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_date_parsed, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN app_alias aa ON aa.app_id = a.steam_appid
 JOIN steam_user_wishlist suw ON suw.app_id = aa.alias_id
 WHERE suw.steam_id = $1 AND suw.removed = FALSE
@@ -103,6 +103,7 @@ func (q *Queries) ListActiveSteamUserWishlist(ctx context.Context, steamID int64
 			&i.PlatformMac,
 			&i.PlatformLinux,
 			&i.ReleaseDate,
+			&i.ReleaseDateParsed,
 			&i.ReleaseComingSoon,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -121,7 +122,7 @@ func (q *Queries) ListActiveSteamUserWishlist(ctx context.Context, steamID int64
 }
 
 const listActiveSteamUserWishlistPage = `-- name: ListActiveSteamUserWishlistPage :many
-SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
+SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_date_parsed, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN app_alias aa ON aa.app_id = a.steam_appid
 JOIN steam_user_wishlist suw ON suw.app_id = aa.alias_id
 WHERE suw.steam_id = $1
@@ -162,6 +163,7 @@ func (q *Queries) ListActiveSteamUserWishlistPage(ctx context.Context, arg ListA
 			&i.PlatformMac,
 			&i.PlatformLinux,
 			&i.ReleaseDate,
+			&i.ReleaseDateParsed,
 			&i.ReleaseComingSoon,
 			&i.CreatedAt,
 			&i.UpdatedAt,

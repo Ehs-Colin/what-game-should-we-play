@@ -42,6 +42,35 @@ func newAppSummaryView(app dbgen.App) appSummaryView {
 	return view
 }
 
+type commonGameView struct {
+	AppID            int32   `json:"appId"`
+	Name             *string `json:"name"`
+	HeaderImage      *string `json:"headerImage"`
+	ReleaseDate      *string `json:"releaseDate"`
+	OwnedCount       int64   `json:"ownedCount"`
+	WishlistCount    int64   `json:"wishlistCount"`
+	TotalCommonUsers int64   `json:"totalCommonUsers"`
+}
+
+func newCommonGameView(row dbgen.ListCommonGamesRow) commonGameView {
+	view := commonGameView{
+		AppID:            row.SteamAppid,
+		OwnedCount:       row.OwnedCount,
+		WishlistCount:    row.WishlistCount,
+		TotalCommonUsers: row.TotalCommonUsers,
+	}
+	if row.Name.Valid {
+		view.Name = &row.Name.String
+	}
+	if row.HeaderImage.Valid {
+		view.HeaderImage = &row.HeaderImage.String
+	}
+	if row.ReleaseDate.Valid {
+		view.ReleaseDate = &row.ReleaseDate.String
+	}
+	return view
+}
+
 type steamUserSummaryView struct {
 	SteamID              string     `json:"steamId"`
 	Name                 string     `json:"name"`

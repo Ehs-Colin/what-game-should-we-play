@@ -9,6 +9,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 const createSteamUser = `-- name: CreateSteamUser :one
@@ -87,6 +89,50 @@ func (q *Queries) GetSteamUserByName(ctx context.Context, name string) (SteamUse
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listImportedSteamUsers = `-- name: ListImportedSteamUsers :many
+SELECT
+    su.steam_id,
+    su.name,
+    EXISTS (
+        SELECT 1
+        FROM import_jobs ij
+        WHERE ij.steam_id = su.steam_id
+          AND ij.status = 'succeeded'
+    ) AS has_succeeded_import
+FROM steam_users su
+WHERE su.steam_id = ANY($1::bigint[])
+ORDER BY su.steam_id
+`
+
+type ListImportedSteamUsersRow struct {
+	SteamID            int64  `json:"steam_id"`
+	Name               string `json:"name"`
+	HasSucceededImport bool   `json:"has_succeeded_import"`
+}
+
+func (q *Queries) ListImportedSteamUsers(ctx context.Context, steamIds []int64) ([]ListImportedSteamUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listImportedSteamUsers, pq.Array(steamIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListImportedSteamUsersRow
+	for rows.Next() {
+		var i ListImportedSteamUsersRow
+		if err := rows.Scan(&i.SteamID, &i.Name, &i.HasSucceededImport); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const searchSteamUsers = `-- name: SearchSteamUsers :many

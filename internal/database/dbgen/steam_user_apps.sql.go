@@ -66,7 +66,7 @@ func (q *Queries) CountActiveSteamUserApps(ctx context.Context, steamID int64) (
 }
 
 const listActiveSteamUserApps = `-- name: ListActiveSteamUserApps :many
-SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
+SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_date_parsed, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN app_alias aa ON aa.app_id = a.steam_appid
 JOIN steam_user_apps sua ON sua.app_id = aa.alias_id
 WHERE sua.steam_id = $1 AND sua.removed = FALSE
@@ -99,6 +99,7 @@ func (q *Queries) ListActiveSteamUserApps(ctx context.Context, steamID int64) ([
 			&i.PlatformMac,
 			&i.PlatformLinux,
 			&i.ReleaseDate,
+			&i.ReleaseDateParsed,
 			&i.ReleaseComingSoon,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -117,7 +118,7 @@ func (q *Queries) ListActiveSteamUserApps(ctx context.Context, steamID int64) ([
 }
 
 const listActiveSteamUserAppsPage = `-- name: ListActiveSteamUserAppsPage :many
-SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
+SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_date_parsed, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN app_alias aa ON aa.app_id = a.steam_appid
 JOIN steam_user_apps sua ON sua.app_id = aa.alias_id
 WHERE sua.steam_id = $1
@@ -158,6 +159,7 @@ func (q *Queries) ListActiveSteamUserAppsPage(ctx context.Context, arg ListActiv
 			&i.PlatformMac,
 			&i.PlatformLinux,
 			&i.ReleaseDate,
+			&i.ReleaseDateParsed,
 			&i.ReleaseComingSoon,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -176,7 +178,7 @@ func (q *Queries) ListActiveSteamUserAppsPage(ctx context.Context, arg ListActiv
 }
 
 const listAppsForSteamUser = `-- name: ListAppsForSteamUser :many
-SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
+SELECT DISTINCT a.steam_appid, a.name, a.detailed_description, a.about_the_game, a.short_description, a.header_image, a.website, a.price_currency, a.price_initial, a.price_final, a.price_discount_percent, a.price_final_formatted, a.platform_windows, a.platform_mac, a.platform_linux, a.release_date, a.release_date_parsed, a.release_coming_soon, a.created_at, a.updated_at FROM apps a
 JOIN app_alias aa ON aa.app_id = a.steam_appid
 JOIN steam_user_apps sua ON sua.app_id = aa.alias_id
 WHERE sua.steam_id = $1
@@ -209,6 +211,7 @@ func (q *Queries) ListAppsForSteamUser(ctx context.Context, steamID int64) ([]Ap
 			&i.PlatformMac,
 			&i.PlatformLinux,
 			&i.ReleaseDate,
+			&i.ReleaseDateParsed,
 			&i.ReleaseComingSoon,
 			&i.CreatedAt,
 			&i.UpdatedAt,

@@ -57,6 +57,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	dynamicMux.HandleFunc("GET /api/steamusers/search", apiHandler.SearchSteamUsers)
 	dynamicMux.HandleFunc("GET /api/steamusers/by-name", apiHandler.GetSteamUserView)
 	dynamicMux.HandleFunc("GET /api/import-jobs/{id}", apiHandler.GetImportJob)
+	dynamicMux.HandleFunc("POST /api/common-games", apiHandler.GetCommonGames)
 
 	// Serve the static front end. The API patterns above are more specific, so
 	// they take precedence over this catch-all. Unknown extensionless paths

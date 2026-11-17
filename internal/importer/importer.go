@@ -551,6 +551,7 @@ func appParams(canonicalID int32, detail *steamapi.AppDetail, now time.Time) dbg
 		PlatformMac:          sql.NullBool{Bool: data.Platforms.Mac, Valid: true},
 		PlatformLinux:        sql.NullBool{Bool: data.Platforms.Linux, Valid: true},
 		ReleaseDate:          nullString(data.ReleaseDate.Date),
+		ReleaseDateParsed:    parseReleaseDate(data.ReleaseDate.Date, data.ReleaseDate.ComingSoon),
 		ReleaseComingSoon:    sql.NullBool{Bool: data.ReleaseDate.ComingSoon, Valid: true},
 		UpdatedAt:            now,
 	}

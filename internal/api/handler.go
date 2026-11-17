@@ -203,6 +203,106 @@ func (handler *Handler) SearchSteamUsers(responseWriter http.ResponseWriter, req
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
 }
 
+type commonGamesRequest struct {
+	SteamIDs []string `json:"steamIds"`
+	Limit    *int     `json:"limit"`
+}
+
+type commonGamesResponse struct {
+	Games []commonGameView `json:"games"`
+}
+
+const (
+	defaultCommonGamesLimit = 10
+	maxCommonGamesLimit     = 100
+	maxCommonGameUsers      = 25
+	maxCommonGamesBodyBytes = 4 << 10
+)
+
+// GetCommonGames returns multiplayer games owned or wishlisted by the
+// requested users, ranked by how many of those users have each game.
+func (handler *Handler) GetCommonGames(responseWriter http.ResponseWriter, request *http.Request) {
+	var body commonGamesRequest
+	request.Body = http.MaxBytesReader(responseWriter, request.Body, maxCommonGamesBodyBytes)
+	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	limit := defaultCommonGamesLimit
+	if body.Limit != nil {
+		limit = *body.Limit
+	}
+	if limit < 1 || limit > maxCommonGamesLimit {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "limit must be between 1 and 100")
+		return
+	}
+
+	seen := make(map[int64]struct{}, len(body.SteamIDs))
+	steamIDs := make([]int64, 0, len(body.SteamIDs))
+	for _, rawSteamID := range body.SteamIDs {
+		value := strings.TrimSpace(rawSteamID)
+		if value == "" {
+			httpx.RespondWithError(responseWriter, http.StatusBadRequest, "steamIds must not contain blank values")
+			return
+		}
+		steamID, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || steamID <= 0 {
+			httpx.RespondWithError(responseWriter, http.StatusBadRequest, "steamIds must contain positive SteamID64 values")
+			return
+		}
+		if _, duplicate := seen[steamID]; duplicate {
+			continue
+		}
+		seen[steamID] = struct{}{}
+		steamIDs = append(steamIDs, steamID)
+	}
+	if len(steamIDs) == 0 {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "steamIds is required")
+		return
+	}
+	if len(steamIDs) > maxCommonGameUsers {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, fmt.Sprintf("at most %d unique steamIds are allowed", maxCommonGameUsers))
+		return
+	}
+
+	importedUsers, err := handler.apiStore.queries.ListImportedSteamUsers(request.Context(), steamIDs)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	importStatus := make(map[int64]bool, len(importedUsers))
+	for _, user := range importedUsers {
+		importStatus[user.SteamID] = user.HasSucceededImport
+	}
+	for _, steamID := range steamIDs {
+		hasSucceededImport, found := importStatus[steamID]
+		if !found {
+			httpx.RespondWithError(responseWriter, http.StatusNotFound, fmt.Sprintf("steam user %d not found", steamID))
+			return
+		}
+		if !hasSucceededImport {
+			httpx.RespondWithError(responseWriter, http.StatusNotFound, fmt.Sprintf("steam user %d has no completed import", steamID))
+			return
+		}
+	}
+
+	rows, err := handler.apiStore.queries.ListCommonGames(request.Context(), dbgen.ListCommonGamesParams{
+		RowLimit: int32(limit),
+		SteamIds: steamIDs,
+	})
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	response := commonGamesResponse{Games: make([]commonGameView, 0, len(rows))}
+	for _, row := range rows {
+		response.Games = append(response.Games, newCommonGameView(row))
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
+}
+
 type steamUserViewResponse struct {
 	SteamUser        steamUserView    `json:"steamUser"`
 	OwnedAppCount    int64            `json:"ownedAppCount"`
