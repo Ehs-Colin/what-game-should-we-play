@@ -157,10 +157,14 @@ let commonGamesRequestToken = 0;
 let commonGamesRequestController = null;
 let commonGamesBusy = false;
 
+let commonGamesUsersToken = 0;
+let commonGamesUsersController = null;
+
 const commonGamesState = {
     selectedUsers: new Map(),
     searchUsers: [],
     results: null,
+    submitted: false,
 };
 
 form.addEventListener("submit", (event) => {
@@ -1513,11 +1517,37 @@ function detailRowNode(label, node) {
 }
 
 function enterCommonGames() {
-    if (commonGamesLimit.value === "") {
-        commonGamesLimit.value = String(COMMON_GAMES_LIMIT_DEFAULT);
-    }
+    const parsed = parseCommonGamesQuery(location.search);
+    const validUserCount =
+        parsed.steamIDs.length >= 2 &&
+        parsed.steamIDs.length <= MAX_COMMON_GAME_USERS;
+
+    commonGamesState.selectedUsers.clear();
+    commonGamesState.searchUsers = [];
+    commonGamesState.results = null;
+    commonGamesState.submitted = parsed.submitted && validUserCount;
+    commonGamesLimit.value = String(parsed.limit ?? COMMON_GAMES_LIMIT_DEFAULT);
+
+    clearCommonGamesSearchResults();
+    clearCommonGamesResultsView();
     renderCommonGamesSelectedUsers();
-    syncCommonGamesControls();
+    setCommonGamesStatus("");
+
+    if (parsed.steamIDs.length === 0) {
+        return;
+    }
+    if (!validUserCount) {
+        setCommonGamesStatus(
+            `Shared links must include between 2 and ${MAX_COMMON_GAME_USERS} users.`,
+            "error",
+        );
+        return;
+    }
+
+    void loadCommonGamesUsersFromURL(
+        parsed.steamIDs,
+        commonGamesState.submitted,
+    );
 }
 
 function leaveCommonGames() {
@@ -1529,6 +1559,10 @@ function leaveCommonGames() {
         setCommonGamesSearchStatus("");
     }
 
+    commonGamesUsersController?.abort();
+    commonGamesUsersController = null;
+    commonGamesUsersToken += 1;
+
     commonGamesRequestController?.abort();
     commonGamesRequestController = null;
     commonGamesRequestToken += 1;
@@ -1539,6 +1573,154 @@ function leaveCommonGames() {
 
     commonGamesResults.setAttribute("aria-busy", "false");
     syncCommonGamesControls();
+}
+
+function parseCommonGamesQuery(search) {
+    const params = new URLSearchParams(search);
+    const seen = new Set();
+    const steamIDs = [];
+
+    for (const rawID of (params.get("steamIds") ?? "").split(",")) {
+        const value = rawID.trim();
+        if (!/^\d+$/.test(value)) {
+            continue;
+        }
+        const steamID = value.replace(/^0+(?=\d)/, "");
+        if (steamID === "0" || seen.has(steamID)) {
+            continue;
+        }
+        seen.add(steamID);
+        steamIDs.push(steamID);
+    }
+
+    return {
+        steamIDs,
+        limit: commonGamesLimitFromValue(params.get("limit")),
+        submitted: params.get("submitted") === "1",
+    };
+}
+
+function buildCommonGamesURL() {
+    const params = new URLSearchParams();
+    const steamIDs = [...commonGamesState.selectedUsers.keys()];
+    if (steamIDs.length > 0) {
+        params.set("steamIds", steamIDs.join(","));
+    }
+
+    const limit = parseCommonGamesLimit();
+    if (limit !== null) {
+        params.set("limit", String(limit));
+    }
+    if (commonGamesState.submitted) {
+        params.set("submitted", "1");
+    }
+
+    const query = params.toString();
+    return query ? `/common-games?${query}` : "/common-games";
+}
+
+function syncCommonGamesURL(push = false) {
+    const url = buildCommonGamesURL();
+    if (url === location.pathname + location.search + location.hash) {
+        return;
+    }
+
+    if (push) {
+        history.pushState({}, "", url);
+    } else {
+        history.replaceState({}, "", url);
+    }
+    currentHref = url;
+}
+
+async function loadCommonGamesUsersFromURL(steamIDs, submitted) {
+    const token = ++commonGamesUsersToken;
+    commonGamesUsersController?.abort();
+    const controller = new AbortController();
+    commonGamesUsersController = controller;
+
+    setCommonGamesStatus(
+        `Loading ${formatCount(steamIDs.length)} shared ${
+            steamIDs.length === 1 ? "user" : "users"
+        }…`,
+    );
+
+    try {
+        const response = await fetch(
+            `/api/steamusers/by-ids?steamIds=${encodeURIComponent(
+                steamIDs.join(","),
+            )}`,
+            {
+                headers: { Accept: "application/json" },
+                signal: controller.signal,
+            },
+        );
+        if (!isCommonGamesUsersCurrent(token)) {
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (!isCommonGamesUsersCurrent(token)) {
+            return;
+        }
+
+        const users = Array.isArray(body?.steamUsers)
+            ? body.steamUsers
+            : [];
+        const usersByID = new Map(
+            users.map((user) => [String(user.steamId ?? ""), user]),
+        );
+
+        commonGamesState.selectedUsers.clear();
+        for (const steamID of steamIDs) {
+            const user = usersByID.get(steamID);
+            if (user?.hasSucceededImport === true) {
+                commonGamesState.selectedUsers.set(steamID, user);
+            }
+        }
+        renderCommonGamesSelectedUsers();
+
+        if (commonGamesState.selectedUsers.size < 2) {
+            setCommonGamesStatus(
+                "This shared link no longer includes enough imported users.",
+                "error",
+            );
+            return;
+        }
+
+        const missingCount =
+            steamIDs.length - commonGamesState.selectedUsers.size;
+        if (missingCount > 0) {
+            setCommonGamesStatus(
+                `${formatCount(missingCount)} shared ${
+                    missingCount === 1 ? "user is" : "users are"
+                } no longer available. Select at least 2 users and try again.`,
+                "error",
+            );
+            return;
+        }
+
+        setCommonGamesStatus("");
+        if (submitted) {
+            await findCommonGames();
+        }
+    } catch (error) {
+        if (isAbort(error) || !isCommonGamesUsersCurrent(token)) {
+            return;
+        }
+        setCommonGamesStatus(errorMessage(error), "error");
+    } finally {
+        if (isCommonGamesUsersCurrent(token)) {
+            commonGamesUsersController = null;
+        }
+    }
+}
+
+function isCommonGamesUsersCurrent(token) {
+    return token === commonGamesUsersToken;
 }
 
 async function performCommonGamesSearch() {
@@ -1765,8 +1947,11 @@ function syncCommonGamesControls() {
 }
 
 function parseCommonGamesLimit() {
-    const rawValue = commonGamesLimit.value.trim();
-    if (rawValue === "") {
+    return commonGamesLimitFromValue(commonGamesLimit.value);
+}
+
+function commonGamesLimitFromValue(rawValue) {
+    if (rawValue === null || rawValue.trim() === "") {
         return null;
     }
 
@@ -1794,6 +1979,10 @@ async function findCommonGames() {
         commonGamesLimit.focus();
         return;
     }
+
+    const alreadySubmitted = commonGamesState.submitted;
+    commonGamesState.submitted = true;
+    syncCommonGamesURL(!alreadySubmitted);
 
     const token = ++commonGamesRequestToken;
     commonGamesRequestController?.abort();
@@ -2196,10 +2385,12 @@ function invalidateCommonGamesResults() {
     commonGamesRequestController = null;
     commonGamesBusy = false;
     commonGamesState.results = null;
+    commonGamesState.submitted = false;
     clearCommonGamesResultsView();
     commonGamesResults.setAttribute("aria-busy", "false");
     setCommonGamesStatus("");
     syncCommonGamesControls();
+    syncCommonGamesURL();
 }
 
 function setCommonGamesSearchStatus(message, state) {

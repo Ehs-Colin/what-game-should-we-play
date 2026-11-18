@@ -155,6 +155,34 @@ func (handler *Handler) GetImportJob(responseWriter http.ResponseWriter, request
 
 // }
 
+func (handler *Handler) GetSteamUsersByIDs(responseWriter http.ResponseWriter, request *http.Request) {
+	rawIDs := strings.TrimSpace(request.URL.Query().Get("steamIds"))
+	if rawIDs == "" {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "steamIds is required")
+		return
+	}
+
+	steamIDs, err := parseSteamIDs(strings.Split(rawIDs, ","))
+	if err != nil {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	rows, err := handler.apiStore.queries.ListImportedSteamUsers(request.Context(), steamIDs)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	users := make([]steamUserLookupView, 0, len(rows))
+	for _, row := range rows {
+		users = append(users, newSteamUserLookupView(row))
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{
+		"steamUsers": users,
+	})
+}
+
 func (handler *Handler) GetSteamUserByName(responseWriter http.ResponseWriter, request *http.Request) {
 	name := strings.TrimSpace(request.URL.Query().Get("name"))
 	if name == "" {
@@ -219,6 +247,33 @@ const (
 	maxCommonGamesBodyBytes = 4 << 10
 )
 
+func parseSteamIDs(rawIDs []string) ([]int64, error) {
+	seen := make(map[int64]struct{}, len(rawIDs))
+	steamIDs := make([]int64, 0, len(rawIDs))
+	for _, rawSteamID := range rawIDs {
+		value := strings.TrimSpace(rawSteamID)
+		if value == "" {
+			return nil, errors.New("steamIds must not contain blank values")
+		}
+		steamID, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || steamID <= 0 {
+			return nil, errors.New("steamIds must contain positive SteamID64 values")
+		}
+		if _, duplicate := seen[steamID]; duplicate {
+			continue
+		}
+		seen[steamID] = struct{}{}
+		steamIDs = append(steamIDs, steamID)
+	}
+	if len(steamIDs) == 0 {
+		return nil, errors.New("steamIds is required")
+	}
+	if len(steamIDs) > maxCommonGameUsers {
+		return nil, fmt.Errorf("at most %d unique steamIds are allowed", maxCommonGameUsers)
+	}
+	return steamIDs, nil
+}
+
 // GetCommonGames returns multiplayer games owned or wishlisted by the
 // requested users, ranked by how many of those users have each game.
 func (handler *Handler) GetCommonGames(responseWriter http.ResponseWriter, request *http.Request) {
@@ -238,31 +293,9 @@ func (handler *Handler) GetCommonGames(responseWriter http.ResponseWriter, reque
 		return
 	}
 
-	seen := make(map[int64]struct{}, len(body.SteamIDs))
-	steamIDs := make([]int64, 0, len(body.SteamIDs))
-	for _, rawSteamID := range body.SteamIDs {
-		value := strings.TrimSpace(rawSteamID)
-		if value == "" {
-			httpx.RespondWithError(responseWriter, http.StatusBadRequest, "steamIds must not contain blank values")
-			return
-		}
-		steamID, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || steamID <= 0 {
-			httpx.RespondWithError(responseWriter, http.StatusBadRequest, "steamIds must contain positive SteamID64 values")
-			return
-		}
-		if _, duplicate := seen[steamID]; duplicate {
-			continue
-		}
-		seen[steamID] = struct{}{}
-		steamIDs = append(steamIDs, steamID)
-	}
-	if len(steamIDs) == 0 {
-		httpx.RespondWithError(responseWriter, http.StatusBadRequest, "steamIds is required")
-		return
-	}
-	if len(steamIDs) > maxCommonGameUsers {
-		httpx.RespondWithError(responseWriter, http.StatusBadRequest, fmt.Sprintf("at most %d unique steamIds are allowed", maxCommonGameUsers))
+	steamIDs, err := parseSteamIDs(body.SteamIDs)
+	if err != nil {
+		httpx.RespondWithError(responseWriter, http.StatusBadRequest, err.Error())
 		return
 	}
 

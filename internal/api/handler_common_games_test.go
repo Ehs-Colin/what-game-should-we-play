@@ -592,6 +592,65 @@ func TestCommonGamesNoMatches(t *testing.T) {
 	}
 }
 
+func TestGetSteamUsersByIDs(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	seedImportedCommonUser(t, env, commonGamesAlice)
+	seedSteamUser(t, env, commonGamesBob, "Bob")
+
+	recorder := env.do(t, http.MethodGet, fmt.Sprintf(
+		"/api/steamusers/by-ids?steamIds=%d,%d",
+		commonGamesAlice,
+		commonGamesBob,
+	), "")
+	requireStatus(t, recorder, http.StatusOK)
+
+	body := decodeJSON[struct {
+		SteamUsers []steamUserLookupView `json:"steamUsers"`
+	}](t, recorder)
+	if len(body.SteamUsers) != 2 {
+		t.Fatalf("steamUsers = %+v, want two", body.SteamUsers)
+	}
+	if got := body.SteamUsers[0].SteamID; got != strconv.FormatInt(commonGamesAlice, 10) {
+		t.Fatalf("steamId = %q, want %d", got, commonGamesAlice)
+	}
+	if !body.SteamUsers[0].HasSucceededImport {
+		t.Fatalf("Alice should have a succeeded import")
+	}
+	if got := body.SteamUsers[1].SteamID; got != strconv.FormatInt(commonGamesBob, 10) {
+		t.Fatalf("steamId = %q, want %d", got, commonGamesBob)
+	}
+	if body.SteamUsers[1].HasSucceededImport {
+		t.Fatalf("Bob should not have a succeeded import")
+	}
+}
+
+func TestGetSteamUsersByIDsBadRequests(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	tooMany := make([]string, maxCommonGameUsers+1)
+	for index := range tooMany {
+		tooMany[index] = strconv.Itoa(index + 1)
+	}
+
+	cases := []struct {
+		name  string
+		query string
+	}{
+		{name: "missing", query: ""},
+		{name: "blank entry", query: "steamIds=1,,2"},
+		{name: "not a number", query: "steamIds=abc"},
+		{name: "zero", query: "steamIds=0"},
+		{name: "negative", query: "steamIds=-1"},
+		{name: "too many", query: "steamIds=" + strings.Join(tooMany, ",")},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := env.do(t, http.MethodGet, "/api/steamusers/by-ids?"+testCase.query, "")
+			requireStatus(t, recorder, http.StatusBadRequest)
+		})
+	}
+}
+
 func TestCommonGamesNullableFields(t *testing.T) {
 	env := newHandlerEnv(t, defaultResolver())
 	seedImportedCommonUser(t, env, commonGamesAlice)

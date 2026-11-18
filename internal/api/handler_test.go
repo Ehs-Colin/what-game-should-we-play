@@ -67,6 +67,7 @@ func newHandlerEnv(t *testing.T, resolver fakeResolver) *handlerEnv {
 	mux.HandleFunc("GET /api/dashboard", handler.GetDashboard)
 	mux.HandleFunc("GET /api/steamusers", handler.GetSteamUserByName)
 	mux.HandleFunc("GET /api/steamusers/search", handler.SearchSteamUsers)
+	mux.HandleFunc("GET /api/steamusers/by-ids", handler.GetSteamUsersByIDs)
 	mux.HandleFunc("GET /api/steamusers/by-name", handler.GetSteamUserView)
 	mux.HandleFunc("GET /api/import-jobs/{id}", handler.GetImportJob)
 	mux.HandleFunc("POST /api/common-games", handler.GetCommonGames)

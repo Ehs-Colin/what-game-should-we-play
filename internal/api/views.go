@@ -75,6 +75,20 @@ func newAppSummaryView(app dbgen.App) appSummaryView {
 	}
 }
 
+type steamUserLookupView struct {
+	SteamID            string `json:"steamId"`
+	Name               string `json:"name"`
+	HasSucceededImport bool   `json:"hasSucceededImport"`
+}
+
+func newSteamUserLookupView(row dbgen.ListImportedSteamUsersRow) steamUserLookupView {
+	return steamUserLookupView{
+		SteamID:            formatSteamID(row.SteamID),
+		Name:               row.Name,
+		HasSucceededImport: row.HasSucceededImport,
+	}
+}
+
 type commonGameView struct {
 	AppID       int32   `json:"appId"`
 	Name        *string `json:"name"`
