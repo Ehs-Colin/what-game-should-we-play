@@ -51,6 +51,8 @@ unchanged.
 - Empty, wishlist-only, and wishlist-private users.
 - Failed, succeeded, running, and queued import jobs.
 - Removed rows and duplicate aliases to exercise deduplication.
+- App details: several apps have a short description, website, price, and
+  platform flags for the View User expandable details panel.
 - Two apps named `Counter-Strike` for name/app-ID ordering, an app with no
   name, and an app with no header image.
 

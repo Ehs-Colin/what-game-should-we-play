@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"strconv"
 	"time"
 
@@ -26,20 +27,41 @@ func newSteamUserView(user dbgen.SteamUser) steamUserView {
 }
 
 type appSummaryView struct {
-	AppID       int32   `json:"appId"`
-	Name        *string `json:"name"`
-	HeaderImage *string `json:"headerImage"`
+	AppID                int32   `json:"appId"`
+	Name                 *string `json:"name"`
+	HeaderImage          *string `json:"headerImage"`
+	ShortDescription     *string `json:"shortDescription"`
+	Website              *string `json:"website"`
+	PriceCurrency        *string `json:"priceCurrency"`
+	PriceInitial         *int32  `json:"priceInitial"`
+	PriceFinal           *int32  `json:"priceFinal"`
+	PriceDiscountPercent *int32  `json:"priceDiscountPercent"`
+	PriceFinalFormatted  *string `json:"priceFinalFormatted"`
+	PlatformWindows      *bool   `json:"platformWindows"`
+	PlatformMac          *bool   `json:"platformMac"`
+	PlatformLinux        *bool   `json:"platformLinux"`
+	ReleaseDate          *string `json:"releaseDate"`
+	ReleaseComingSoon    *bool   `json:"releaseComingSoon"`
 }
 
 func newAppSummaryView(app dbgen.App) appSummaryView {
-	view := appSummaryView{AppID: app.SteamAppid}
-	if app.Name.Valid {
-		view.Name = &app.Name.String
+	return appSummaryView{
+		AppID:                app.SteamAppid,
+		Name:                 nullableString(app.Name),
+		HeaderImage:          nullableString(app.HeaderImage),
+		ShortDescription:     nullableString(app.ShortDescription),
+		Website:              nullableString(app.Website),
+		PriceCurrency:        nullableString(app.PriceCurrency),
+		PriceInitial:         nullableInt32(app.PriceInitial),
+		PriceFinal:           nullableInt32(app.PriceFinal),
+		PriceDiscountPercent: nullableInt32(app.PriceDiscountPercent),
+		PriceFinalFormatted:  nullableString(app.PriceFinalFormatted),
+		PlatformWindows:      nullableBool(app.PlatformWindows),
+		PlatformMac:          nullableBool(app.PlatformMac),
+		PlatformLinux:        nullableBool(app.PlatformLinux),
+		ReleaseDate:          nullableString(app.ReleaseDate),
+		ReleaseComingSoon:    nullableBool(app.ReleaseComingSoon),
 	}
-	if app.HeaderImage.Valid {
-		view.HeaderImage = &app.HeaderImage.String
-	}
-	return view
 }
 
 type commonGameView struct {
@@ -151,4 +173,25 @@ func newImportJobView(job dbgen.ImportJob) importJobView {
 
 func formatSteamID(steamID int64) string {
 	return strconv.FormatInt(steamID, 10)
+}
+
+func nullableString(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	return &value.String
+}
+
+func nullableInt32(value sql.NullInt32) *int32 {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Int32
+}
+
+func nullableBool(value sql.NullBool) *bool {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Bool
 }

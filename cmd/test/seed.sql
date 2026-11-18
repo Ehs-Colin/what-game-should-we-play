@@ -127,6 +127,52 @@ FROM (VALUES
     (367520), (391540), (268910), (814380), (374320), (255710)
 ) AS v(steam_appid);
 
+-- Store and detail metadata for a few apps so the View User table has formatted
+-- prices and the expandable details panel has real content to show.
+UPDATE apps
+SET short_description = v.short_description,
+    website = v.website,
+    price_currency = v.price_currency,
+    price_initial = v.price_initial,
+    price_final = v.price_final,
+    price_discount_percent = v.price_discount_percent,
+    price_final_formatted = v.price_final_formatted,
+    platform_windows = v.platform_windows,
+    platform_mac = v.platform_mac,
+    platform_linux = v.platform_linux,
+    updated_at = now()
+FROM (VALUES
+    (730,
+     'Counter-Strike 2 is the largest technical leap forward in Counter-Strike history.',
+     'https://www.counter-strike.net/',
+     'USD', 0, 0, 0, 'Free', TRUE, FALSE, TRUE),
+    (570,
+     'Dota 2 is a multiplayer action real-time strategy game with an ever-expanding roster of heroes.',
+     'https://www.dota2.com/',
+     'USD', 0, 0, 0, 'Free', TRUE, TRUE, TRUE),
+    (550,
+     'Deep Rock Galactic is a co-op first-person shooter featuring badass space dwarves.',
+     'https://www.deeprockgalactic.com/',
+     'USD', 2999, 1499, 50, '$14.99', TRUE, FALSE, TRUE),
+    (413150,
+     'Stardew Valley is an open-ended country-life RPG about starting a new life on a farm.',
+     'https://www.stardewvalley.net/',
+     'USD', 1499, 1499, 0, '$14.99', TRUE, TRUE, TRUE),
+    (367520,
+     'Hollow Knight is a challenging action adventure through a ruined insect kingdom.',
+     'https://www.hollowknight.com/',
+     'USD', 1499, 1499, 0, '$14.99', TRUE, TRUE, TRUE),
+    (814380,
+     'Sekiro: Shadows Die Twice is an action adventure set in a fictional 16th-century Japan.',
+     'https://www.sekirothegame.com/',
+     'USD', 5999, 5999, 0, '$59.99', TRUE, FALSE, FALSE)
+) AS v(
+    steam_appid, short_description, website, price_currency,
+    price_initial, price_final, price_discount_percent, price_final_formatted,
+    platform_windows, platform_mac, platform_linux
+)
+WHERE apps.steam_appid = v.steam_appid;
+
 -- Users. CaseTwin and casetwin differ only by case; CaseTwin has the newer
 -- updated_at and is the one View User must resolve.
 INSERT INTO steam_users (steam_id, name, wishlist_private, created_at, updated_at) VALUES

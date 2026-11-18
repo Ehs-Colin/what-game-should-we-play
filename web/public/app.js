@@ -1119,12 +1119,15 @@ function renderUserApps(data) {
         )} ${list} ${noun}`;
     }
 
-    userAppRows.replaceChildren(...apps.map(buildUserAppRow));
+    userAppRows.replaceChildren(
+        ...apps.flatMap((app, index) => buildUserAppRows(app, index)),
+    );
     renderUserPagination(data);
 }
 
-function buildUserAppRow(app) {
+function buildUserAppRows(app, index) {
     const row = document.createElement("tr");
+    row.className = "app-row";
 
     const nameCell = newElement("td", "app-cell");
     const body = newElement("div", "app-cell__body");
@@ -1138,16 +1141,198 @@ function buildUserAppRow(app) {
     body.append(newElement("span", "app-cell__name", app.name ?? "Unknown app"));
     nameCell.append(body);
 
-    const idCell = newElement("td", "app-id", String(app.appId ?? ""));
     const storeCell = newElement("td", "app-store");
-    const storeLink = newElement("a", "", "Steam");
+
+    const priceLabel = appPriceLabel(app);
+    const storeLink = newElement("a", "app-store__link", priceLabel);
     storeLink.href = `https://store.steampowered.com/app/${encodeURIComponent(app.appId)}/`;
     storeLink.target = "_blank";
     storeLink.rel = "noopener noreferrer";
+    storeLink.setAttribute(
+        "aria-label",
+        `View ${app.name ?? "app"} on Steam (${priceLabel})`,
+    );
     storeCell.append(storeLink);
 
-    row.append(nameCell, idCell, storeCell);
-    return row;
+    const detailsID = `user-app-details-${app.appId ?? "unknown"}-${index}`;
+    const toggle = newElement("button", "button--secondary app-expand");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", detailsID);
+    toggle.setAttribute(
+        "aria-label",
+        `Show details for ${app.name ?? "app"}`,
+    );
+
+    const chevron = newElement("span", "app-expand__chevron");
+    chevron.setAttribute("aria-hidden", "true");
+    toggle.append(chevron);
+
+    const expandCell = newElement("td", "app-expand-cell");
+    expandCell.append(toggle);
+
+    const detailsRow = document.createElement("tr");
+    detailsRow.className = "app-details-row";
+    detailsRow.hidden = true;
+
+    const detailsCell = newElement("td", "app-details-cell");
+    detailsCell.colSpan = 3;
+
+    const details = newElement("div", "app-details");
+    details.id = detailsID;
+    details.append(buildUserAppDetails(app));
+    detailsCell.append(details);
+    detailsRow.append(detailsCell);
+
+    toggle.addEventListener("click", () => {
+        const expanded = toggle.getAttribute("aria-expanded") === "true";
+        toggle.setAttribute("aria-expanded", String(!expanded));
+        toggle.setAttribute(
+            "aria-label",
+            expanded
+                ? `Show details for ${app.name ?? "app"}`
+                : `Hide details for ${app.name ?? "app"}`,
+        );
+        detailsRow.hidden = expanded;
+    });
+
+    row.append(nameCell, storeCell, expandCell);
+
+    return [row, detailsRow];
+}
+
+function appPriceLabel(app) {
+    const formatted =
+        typeof app.priceFinalFormatted === "string"
+            ? app.priceFinalFormatted.trim()
+            : "";
+    return formatted || "View on Steam";
+}
+
+function buildUserAppDetails(app) {
+    const fragment = document.createDocumentFragment();
+
+    if (app.headerImage) {
+        const image = newElement(
+            "img",
+            "app-cell__image app-cell__image--large",
+        );
+        image.src = app.headerImage;
+        image.alt = "";
+        image.loading = "lazy";
+        fragment.append(image);
+    }
+
+    if (
+        typeof app.shortDescription === "string" &&
+        app.shortDescription.trim() !== ""
+    ) {
+        fragment.append(
+            newElement(
+                "p",
+                "app-details__description",
+                app.shortDescription.trim(),
+            ),
+        );
+    }
+
+    const rows = newElement("dl", "details app-details__list");
+    rows.append(
+        detailRow("Release date", appReleaseLabel(app)),
+        detailRow("Price", appPriceDetail(app)),
+        detailRow("Platforms", appPlatformsLabel(app)),
+        buildAppWebsiteRow(app.website),
+    );
+    fragment.append(rows);
+
+    return fragment;
+}
+
+function appReleaseLabel(app) {
+    const releaseDate =
+        typeof app.releaseDate === "string" ? app.releaseDate.trim() : "";
+    if (releaseDate) {
+        return app.releaseComingSoon === true
+            ? `${releaseDate} (coming soon)`
+            : releaseDate;
+    }
+    return app.releaseComingSoon === true ? "Coming soon" : "—";
+}
+
+function appPriceDetail(app) {
+    const formatted =
+        typeof app.priceFinalFormatted === "string"
+            ? app.priceFinalFormatted.trim()
+            : "";
+    const discount = countValue(app.priceDiscountPercent);
+    const initial = formatAppPrice(app.priceInitial, app.priceCurrency);
+
+    if (formatted && discount > 0) {
+        return initial
+            ? `${formatted} (${discount}% off from ${initial})`
+            : `${formatted} (${discount}% off)`;
+    }
+    return formatted || "—";
+}
+
+function formatAppPrice(cents, currency) {
+    if (
+        !Number.isInteger(cents) ||
+        typeof currency !== "string" ||
+        !/^[A-Za-z]{3}$/.test(currency)
+    ) {
+        return "";
+    }
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: "currency",
+            currency: currency.toUpperCase(),
+        }).format(cents / 100);
+    } catch {
+        return "";
+    }
+}
+
+function appPlatformsLabel(app) {
+    const platforms = [];
+    if (app.platformWindows === true) {
+        platforms.push("Windows");
+    }
+    if (app.platformMac === true) {
+        platforms.push("macOS");
+    }
+    if (app.platformLinux === true) {
+        platforms.push("Linux");
+    }
+    return platforms.length > 0 ? platforms.join(", ") : "—";
+}
+
+function buildAppWebsiteRow(website) {
+    const href = safeExternalURL(website);
+    if (!href) {
+        return detailRow("Website", "—");
+    }
+
+    const link = newElement("a", "app-details__website", href);
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return detailRowNode("Website", link);
+}
+
+function safeExternalURL(value) {
+    if (typeof value !== "string" || value.trim() === "") {
+        return "";
+    }
+    try {
+        const url = new URL(value.trim());
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+            return "";
+        }
+        return url.href;
+    } catch {
+        return "";
+    }
 }
 
 function renderUserPagination(data) {

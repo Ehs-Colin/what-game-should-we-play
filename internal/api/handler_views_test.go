@@ -529,6 +529,81 @@ func TestGetSteamUserViewExactMatchAndStringSteamID(t *testing.T) {
 	assertJSONString(t, user["steamId"], strconv.FormatInt(testSteamID, 10))
 }
 
+func TestGetSteamUserViewIncludesAppDetails(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	const steamID = int64(1551)
+	const appID = int32(730)
+	seedSteamUser(t, env, steamID, "DetailUser")
+
+	_, err := env.queries.CreateApp(context.Background(), dbgen.CreateAppParams{
+		SteamAppid:           appID,
+		Name:                 sql.NullString{String: "Counter-Strike 2", Valid: true},
+		HeaderImage:          sql.NullString{String: "https://example.test/730.jpg", Valid: true},
+		ShortDescription:     sql.NullString{String: "A tactical multiplayer shooter.", Valid: true},
+		Website:              sql.NullString{String: "https://www.counter-strike.net/", Valid: true},
+		PriceCurrency:        sql.NullString{String: "USD", Valid: true},
+		PriceInitial:         sql.NullInt32{Int32: 1999, Valid: true},
+		PriceFinal:           sql.NullInt32{Int32: 999, Valid: true},
+		PriceDiscountPercent: sql.NullInt32{Int32: 50, Valid: true},
+		PriceFinalFormatted:  sql.NullString{String: "$9.99", Valid: true},
+		PlatformWindows:      sql.NullBool{Bool: true, Valid: true},
+		PlatformMac:          sql.NullBool{Bool: false, Valid: true},
+		PlatformLinux:        sql.NullBool{Bool: true, Valid: true},
+		ReleaseDate:          sql.NullString{String: "21 Nov, 2024", Valid: true},
+		ReleaseComingSoon:    sql.NullBool{Bool: false, Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	seedAlias(t, env, appID, appID)
+	seedOwnedApp(t, env, steamID, appID, false)
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers/by-name?name=detailuser", "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserViewResponse](t, recorder)
+	if len(body.Apps) != 1 {
+		t.Fatalf("apps = %d, want 1", len(body.Apps))
+	}
+
+	app := body.Apps[0]
+	if app.ShortDescription == nil || *app.ShortDescription != "A tactical multiplayer shooter." {
+		t.Fatalf("shortDescription = %v", app.ShortDescription)
+	}
+	if app.Website == nil || *app.Website != "https://www.counter-strike.net/" {
+		t.Fatalf("website = %v", app.Website)
+	}
+	if app.PriceCurrency == nil || *app.PriceCurrency != "USD" {
+		t.Fatalf("priceCurrency = %v", app.PriceCurrency)
+	}
+	if app.PriceInitial == nil || *app.PriceInitial != 1999 {
+		t.Fatalf("priceInitial = %v", app.PriceInitial)
+	}
+	if app.PriceFinal == nil || *app.PriceFinal != 999 {
+		t.Fatalf("priceFinal = %v", app.PriceFinal)
+	}
+	if app.PriceDiscountPercent == nil || *app.PriceDiscountPercent != 50 {
+		t.Fatalf("priceDiscountPercent = %v", app.PriceDiscountPercent)
+	}
+	if app.PriceFinalFormatted == nil || *app.PriceFinalFormatted != "$9.99" {
+		t.Fatalf("priceFinalFormatted = %v", app.PriceFinalFormatted)
+	}
+	if app.PlatformWindows == nil || !*app.PlatformWindows {
+		t.Fatalf("platformWindows = %v", app.PlatformWindows)
+	}
+	if app.PlatformMac == nil || *app.PlatformMac {
+		t.Fatalf("platformMac = %v", app.PlatformMac)
+	}
+	if app.PlatformLinux == nil || !*app.PlatformLinux {
+		t.Fatalf("platformLinux = %v", app.PlatformLinux)
+	}
+	if app.ReleaseDate == nil || *app.ReleaseDate != "21 Nov, 2024" {
+		t.Fatalf("releaseDate = %v", app.ReleaseDate)
+	}
+	if app.ReleaseComingSoon == nil || *app.ReleaseComingSoon {
+		t.Fatalf("releaseComingSoon = %v", app.ReleaseComingSoon)
+	}
+}
+
 func TestGetSteamUserViewReturnsNewestCaseVariant(t *testing.T) {
 	const (
 		olderSteamID = int64(76561198000000002)
