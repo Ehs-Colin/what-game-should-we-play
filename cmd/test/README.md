@@ -2,7 +2,7 @@
 
 `start.sh` builds the server, recreates an isolated PostgreSQL database, runs
 the server against it, and loads representative data for reviewing the
-dashboard, search, and user pages. `stop.sh` stops the server.
+dashboard, search, user, and common games pages. `stop.sh` stops the server.
 
 The development database is never touched: the test database is created next to
 it and dropped/recreated on every start.
@@ -38,6 +38,14 @@ unchanged.
 
 - Dashboard: 9 users, 63 apps, 1 running import job, 1 queued job.
 - `SomePlayer`: 34 owned apps (two pages at 25 per page) and 27 wishlist apps.
+- Common games: 20 multiplayer apps with release dates. `SomePlayer` +
+  `WishlistOnly` match all 20, so the default limit of 10 hides half.
+- Common games eligibility: `PlayerTwo` (queued), `casetwin` (failed only), and
+  `Alice` (running only) are ineligible. `BobTheBuilder` is eligible through an
+  older succeeded import.
+- `SomePlayer` + `CaseTwin` + `WishlistOnly` + `PrivateWishlist` produce mixed
+  percentages; `Counter-Strike 2` is owned by three and wishlisted by one for a
+  combined 4 of 4 (100%).
 - `CaseTwin` and `casetwin` differ only by case; View User resolves to
   `CaseTwin`, which has the newer `updated_at`.
 - Empty, wishlist-only, and wishlist-private users.

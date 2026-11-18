@@ -364,13 +364,14 @@ func TestSearchSteamUsersLatestImportAndActiveJob(t *testing.T) {
 	byName := summariesByName(body.SteamUsers)
 
 	tests := []struct {
-		name       string
-		wantStatus string
-		wantActive bool
+		name          string
+		wantStatus    string
+		wantActive    bool
+		wantSucceeded bool
 	}{
-		{name: "QueuedUser", wantStatus: importer.StatusQueued, wantActive: true},
+		{name: "QueuedUser", wantStatus: importer.StatusQueued, wantActive: true, wantSucceeded: true},
 		{name: "RunningUser", wantStatus: importer.StatusRunning, wantActive: true},
-		{name: "SucceededUser", wantStatus: importer.StatusSucceeded, wantActive: false},
+		{name: "SucceededUser", wantStatus: importer.StatusSucceeded, wantActive: false, wantSucceeded: true},
 		{name: "FailedUser", wantStatus: importer.StatusFailed, wantActive: false},
 		{name: "MixedUser", wantStatus: importer.StatusFailed, wantActive: true},
 	}
@@ -385,6 +386,9 @@ func TestSearchSteamUsersLatestImportAndActiveJob(t *testing.T) {
 			}
 			if user.HasActiveJob != test.wantActive {
 				t.Fatalf("hasActiveJob = %v, want %v", user.HasActiveJob, test.wantActive)
+			}
+			if user.HasSucceededImport != test.wantSucceeded {
+				t.Fatalf("hasSucceededImport = %v, want %v", user.HasSucceededImport, test.wantSucceeded)
 			}
 		})
 	}
@@ -436,6 +440,67 @@ func TestSearchSteamUsersSteamIDIsString(t *testing.T) {
 		t.Fatalf("decode user %s: %v", users[0], err)
 	}
 	assertJSONString(t, user["steamId"], strconv.FormatInt(testSteamID, 10))
+}
+
+func TestSearchSteamUsersHasSucceededImportField(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	now := time.Now()
+
+	seedSteamUser(t, env, 1501, "NoJobsUser")
+	seedSteamUser(t, env, 1502, "ReadyUser")
+	seedImportJob(t, env, 1502, importer.StatusSucceeded, now.Add(-time.Hour))
+	seedSteamUser(t, env, 1503, "FailedAfterSuccessUser")
+	seedImportJob(t, env, 1503, importer.StatusSucceeded, now.Add(-2*time.Hour))
+	seedImportJob(t, env, 1503, importer.StatusFailed, now.Add(-time.Hour))
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers/search?name=user", "")
+	raw := decodeRawJSON(t, recorder)
+
+	var users []json.RawMessage
+	if err := json.Unmarshal(raw["steamUsers"], &users); err != nil {
+		t.Fatalf("decode steamUsers %s: %v", raw["steamUsers"], err)
+	}
+	if len(users) != 3 {
+		t.Fatalf("users = %d, want 3 (%s)", len(users), recorder.Body.String())
+	}
+
+	byName := make(map[string]map[string]json.RawMessage, len(users))
+	for _, rawUser := range users {
+		var user map[string]json.RawMessage
+		if err := json.Unmarshal(rawUser, &user); err != nil {
+			t.Fatalf("decode user %s: %v", rawUser, err)
+		}
+		var name string
+		if err := json.Unmarshal(user["name"], &name); err != nil {
+			t.Fatalf("decode user name %s: %v", user["name"], err)
+		}
+		byName[name] = user
+	}
+
+	tests := map[string]bool{
+		"NoJobsUser":             false,
+		"ReadyUser":              true,
+		"FailedAfterSuccessUser": true,
+	}
+	for name, want := range tests {
+		t.Run(name, func(t *testing.T) {
+			user, ok := byName[name]
+			if !ok {
+				t.Fatalf("missing user %q", name)
+			}
+			rawValue, ok := user["hasSucceededImport"]
+			if !ok {
+				t.Fatalf("hasSucceededImport is missing from %s", recorder.Body.String())
+			}
+			var got bool
+			if err := json.Unmarshal(rawValue, &got); err != nil {
+				t.Fatalf("hasSucceededImport %s is not a JSON boolean: %v", rawValue, err)
+			}
+			if got != want {
+				t.Fatalf("hasSucceededImport = %v, want %v", got, want)
+			}
+		})
+	}
 }
 
 func TestGetSteamUserViewExactMatchAndStringSteamID(t *testing.T) {

@@ -80,18 +80,20 @@ type steamUserSummaryView struct {
 	LatestImportStatus   *string    `json:"latestImportStatus"`
 	LatestImportFinished *time.Time `json:"latestImportFinishedAt"`
 	HasActiveJob         bool       `json:"hasActiveJob"`
+	HasSucceededImport   bool       `json:"hasSucceededImport"`
 	UpdatedAt            time.Time  `json:"updatedAt"`
 }
 
 func newSteamUserSummaryView(row dbgen.SearchSteamUsersRow) steamUserSummaryView {
 	view := steamUserSummaryView{
-		SteamID:          formatSteamID(row.SteamID),
-		Name:             row.Name,
-		WishlistPrivate:  row.WishlistPrivate,
-		OwnedAppCount:    row.OwnedAppCount,
-		WishlistAppCount: row.WishlistAppCount,
-		HasActiveJob:     row.HasActiveJob,
-		UpdatedAt:        row.UpdatedAt,
+		SteamID:            formatSteamID(row.SteamID),
+		Name:               row.Name,
+		WishlistPrivate:    row.WishlistPrivate,
+		OwnedAppCount:      row.OwnedAppCount,
+		WishlistAppCount:   row.WishlistAppCount,
+		HasActiveJob:       row.HasActiveJob,
+		HasSucceededImport: row.HasSucceededImport,
+		UpdatedAt:          row.UpdatedAt,
 	}
 	if row.LatestImportStatus.Valid {
 		view.LatestImportStatus = &row.LatestImportStatus.String

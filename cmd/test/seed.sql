@@ -83,6 +83,50 @@ INSERT INTO app_alias (app_id, alias_id, created_at, updated_at) VALUES
     (367520, 999368, now(), now()),
     (367520, 999369, now(), now());
 
+-- Common games only considers multiplayer apps with a known release date that
+-- has already happened. Mark a representative subset as multiplayer; every
+-- other app above (including single-player Portal and Half-Life 2) is filtered
+-- out by the query even when several users own it.
+INSERT INTO categories (id, description, created_at, updated_at) VALUES
+    (1, 'Multi-player', now(), now());
+
+UPDATE apps
+SET release_date = v.release_date,
+    release_date_parsed = v.release_date_parsed,
+    release_coming_soon = FALSE,
+    updated_at = now()
+FROM (VALUES
+    (730,     '21 Aug, 2012', DATE '2012-08-21'),
+    (570,     '9 Jul, 2013',  DATE '2013-07-09'),
+    (440,     '10 Oct, 2007', DATE '2007-10-10'),
+    (620,     '19 Apr, 2011', DATE '2011-04-19'),
+    (10,      '1 Nov, 2000',  DATE '2000-11-01'),
+    (80,      '21 Mar, 2004', DATE '2004-03-21'),
+    (322330,  '21 Apr, 2016', DATE '2016-04-21'),
+    (413150,  '26 Feb, 2016', DATE '2016-02-26'),
+    (105600,  '16 May, 2011', DATE '2011-05-16'),
+    (550,     '13 May, 2020', DATE '2020-05-13'),
+    (632360,  '11 Aug, 2020', DATE '2020-08-11'),
+    (892970,  '2 Feb, 2021',  DATE '2021-02-02'),
+    (251570,  '13 Dec, 2013', DATE '2013-12-13'),
+    (427520,  '14 Aug, 2020', DATE '2020-08-14'),
+    (367520,  '24 Feb, 2017', DATE '2017-02-24'),
+    (391540,  '15 Sep, 2015', DATE '2015-09-15'),
+    (268910,  '29 Sep, 2017', DATE '2017-09-29'),
+    (814380,  '22 Mar, 2019', DATE '2019-03-22'),
+    (374320,  '12 Apr, 2016', DATE '2016-04-12'),
+    (255710,  '10 Mar, 2015', DATE '2015-03-10')
+) AS v(steam_appid, release_date, release_date_parsed)
+WHERE apps.steam_appid = v.steam_appid;
+
+INSERT INTO app_categories (app_id, category_id, created_at, updated_at)
+SELECT steam_appid, 1, now(), now()
+FROM (VALUES
+    (730), (570), (440), (620), (10), (80), (322330), (413150),
+    (105600), (550), (632360), (892970), (251570), (427520),
+    (367520), (391540), (268910), (814380), (374320), (255710)
+) AS v(steam_appid);
+
 -- Users. CaseTwin and casetwin differ only by case; CaseTwin has the newer
 -- updated_at and is the one View User must resolve.
 INSERT INTO steam_users (steam_id, name, wishlist_private, created_at, updated_at) VALUES
@@ -130,7 +174,7 @@ FROM (VALUES (10, false), (80, false), (322330, false), (999080, true)) AS v(ali
 
 INSERT INTO steam_user_apps (steam_id, app_id, removed, created_at, updated_at)
 SELECT 76561198000000005, alias_id, false, now(), now()
-FROM (VALUES (730), (570)) AS v(alias_id);
+FROM (VALUES (730), (570), (220)) AS v(alias_id);
 
 INSERT INTO steam_user_apps (steam_id, app_id, removed, created_at, updated_at)
 SELECT 76561198000000006, alias_id, false, now(), now()
@@ -138,6 +182,16 @@ FROM (VALUES (440), (220), (400), (620), (10), (80), (292030), (1091500), (10869
 
 INSERT INTO steam_user_apps (steam_id, app_id, removed, created_at, updated_at)
 SELECT 76561198000000009, 730, false, now(), now();
+
+-- WishlistOnly also owns games SomePlayer owns, so the pair has enough common
+-- games to exercise a result limit below the match count. WishlistOnly keeps
+-- its wishlist-only rows as well so owned/wishlist combinations are visible.
+INSERT INTO steam_user_apps (steam_id, app_id, removed, created_at, updated_at)
+SELECT 76561198000000008, alias_id, false, now(), now()
+FROM (VALUES
+    (440), (620), (413150), (105600), (550), (632360), (892970),
+    (251570), (427520)
+) AS v(alias_id);
 
 -- SomePlayer's wishlist has 27 canonical apps, including three alias rows for
 -- 367520 where two are active (deduped) and one is removed.
@@ -164,7 +218,7 @@ FROM (VALUES (268910), (814380)) AS v(alias_id);
 
 INSERT INTO steam_user_wishlist (steam_id, app_id, date_added, removed, created_at, updated_at)
 SELECT 76561198000000008, alias_id, now() - interval '4 days', false, now(), now()
-FROM (VALUES (367520), (391540), (268910), (814380), (374320), (255710)) AS v(alias_id);
+FROM (VALUES (367520), (391540), (268910), (814380), (374320), (255710), (730)) AS v(alias_id);
 
 -- Import jobs. SomePlayer and Bob have an older job so the UI demonstrates
 -- that "latest" means most recently created, not most recently finished.
@@ -192,7 +246,7 @@ INSERT INTO import_jobs (
     (76561198000000006, 'failed', 9, 4, 1, 1, 0, 0, 0, 0,
      'The Steam profile could not be read.',
      now() - interval '4 hours', now() - interval '4 hours', now() - interval '3 hours'),
-    (76561198000000008, 'succeeded', 0, 0, 0, 0, 6, 6, 0, 0,
+    (76561198000000008, 'succeeded', 9, 9, 0, 0, 7, 7, 0, 0,
      NULL, now() - interval '7 hours', now() - interval '7 hours', now() - interval '6 hours'),
     (76561198000000009, 'succeeded', 1, 1, 0, 0, 0, 0, 0, 0,
      NULL, now() - interval '9 hours', now() - interval '9 hours', now() - interval '8 hours');

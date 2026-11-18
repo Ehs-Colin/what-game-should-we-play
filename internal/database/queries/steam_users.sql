@@ -35,7 +35,13 @@ SELECT
         FROM import_jobs active
         WHERE active.steam_id = su.steam_id
           AND active.status IN ('queued', 'running')
-    ) AS has_active_job
+    ) AS has_active_job,
+    EXISTS (
+        SELECT 1
+        FROM import_jobs succeeded
+        WHERE succeeded.steam_id = su.steam_id
+          AND succeeded.status = 'succeeded'
+    ) AS has_succeeded_import
 FROM steam_users su
 LEFT JOIN import_jobs latest ON latest.id = (
     SELECT id

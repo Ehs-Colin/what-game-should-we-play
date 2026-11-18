@@ -5,11 +5,17 @@ const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const DASHBOARD_REFRESH_MS = 5000;
 const PROFILE_PREFIX = "https://steamcommunity.com/id/";
 
+const MAX_COMMON_GAME_USERS = 25;
+const COMMON_GAMES_LIMIT_MIN = 1;
+const COMMON_GAMES_LIMIT_MAX = 100;
+const COMMON_GAMES_LIMIT_DEFAULT = 10;
+
 const ROUTES = new Map([
     ["/", "dashboard"],
     ["/import", "import"],
     ["/search", "search"],
     ["/user", "user"],
+    ["/common-games", "commonGames"],
 ]);
 
 const ROUTE_TITLES = {
@@ -17,6 +23,7 @@ const ROUTE_TITLES = {
     import: "Import Steam User",
     search: "Search Users",
     user: "View User",
+    commonGames: "Find Common Games",
 };
 
 const viewSections = document.querySelectorAll("[data-view]");
@@ -77,6 +84,28 @@ const userPageSize = document.querySelector("#user-page-size");
 const userAppRows = document.querySelector("#user-app-rows");
 const userPagination = document.querySelector("#user-pagination");
 
+const commonGamesSearchForm = document.querySelector("#common-games-search-form");
+const commonGamesSearchInput = document.querySelector("#common-games-search-name");
+const commonGamesSearchButton = document.querySelector("#common-games-search-button");
+const commonGamesSearchStatus = document.querySelector("#common-games-search-status");
+const commonGamesSearchResultsPanel = document.querySelector(
+    "#common-games-search-results-panel",
+);
+const commonGamesSearchResults = document.querySelector("#common-games-search-results");
+const commonGamesSelectedCount = document.querySelector("#common-games-selected-count");
+const commonGamesSelectedEmpty = document.querySelector("#common-games-selected-empty");
+const commonGamesSelectedList = document.querySelector("#common-games-selected-list");
+const commonGamesSelectedHint = document.querySelector("#common-games-selected-hint");
+const commonGamesLimit = document.querySelector("#common-games-limit");
+const commonGamesSubmit = document.querySelector("#common-games-submit");
+const commonGamesSubmitHint = document.querySelector("#common-games-submit-hint");
+const commonGamesStatus = document.querySelector("#common-games-status");
+const commonGamesResults = document.querySelector("#common-games-results");
+const commonGamesResultsCount = document.querySelector("#common-games-results-count");
+const commonGamesQueryUsers = document.querySelector("#common-games-query-users");
+const commonGamesResultsEmpty = document.querySelector("#common-games-results-empty");
+const commonGamesGameList = document.querySelector("#common-games-game-list");
+
 const numberFormatter = new Intl.NumberFormat();
 
 let currentRoute = null;
@@ -116,6 +145,20 @@ const userState = {
     pageSize: 25,
     pages: { owned: 1, wishlist: 1 },
     data: null,
+};
+
+let commonGamesSearchToken = 0;
+let commonGamesSearchController = null;
+let commonGamesSearchBusy = false;
+
+let commonGamesRequestToken = 0;
+let commonGamesRequestController = null;
+let commonGamesBusy = false;
+
+const commonGamesState = {
+    selectedUsers: new Map(),
+    searchUsers: [],
+    results: null,
 };
 
 form.addEventListener("submit", (event) => {
@@ -166,6 +209,41 @@ userPageSize.addEventListener("change", () => {
         return;
     }
     pushUserURL(userState.name, userState.list, 1, pageSize);
+});
+
+commonGamesSearchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void performCommonGamesSearch();
+});
+
+commonGamesSubmit.addEventListener("click", () => {
+    void findCommonGames();
+});
+
+commonGamesLimit.addEventListener("input", () => {
+    invalidateCommonGamesResults();
+});
+
+commonGamesSearchResults.addEventListener("click", (event) => {
+    const target = event.target.closest("button[data-add-steam-id]");
+    if (!target) {
+        return;
+    }
+    const steamID = target.dataset.addSteamId ?? "";
+    const user = commonGamesState.searchUsers.find(
+        (candidate) => String(candidate.steamId) === steamID,
+    );
+    if (user) {
+        addCommonGamesUser(user);
+    }
+});
+
+commonGamesSelectedList.addEventListener("click", (event) => {
+    const target = event.target.closest("button[data-remove-steam-id]");
+    if (!target) {
+        return;
+    }
+    removeCommonGamesUser(target.dataset.removeSteamId ?? "");
 });
 
 async function search() {
@@ -1203,6 +1281,573 @@ function detailRowNode(label, node) {
     return row;
 }
 
+function enterCommonGames() {
+    if (commonGamesLimit.value === "") {
+        commonGamesLimit.value = String(COMMON_GAMES_LIMIT_DEFAULT);
+    }
+    renderCommonGamesSelectedUsers();
+    syncCommonGamesControls();
+}
+
+function leaveCommonGames() {
+    commonGamesSearchController?.abort();
+    commonGamesSearchController = null;
+    commonGamesSearchToken += 1;
+    if (commonGamesSearchBusy) {
+        setCommonGamesSearchBusy(false);
+        setCommonGamesSearchStatus("");
+    }
+
+    commonGamesRequestController?.abort();
+    commonGamesRequestController = null;
+    commonGamesRequestToken += 1;
+    if (commonGamesBusy) {
+        commonGamesBusy = false;
+        setCommonGamesStatus("");
+    }
+
+    commonGamesResults.setAttribute("aria-busy", "false");
+    syncCommonGamesControls();
+}
+
+async function performCommonGamesSearch() {
+    const token = ++commonGamesSearchToken;
+    commonGamesSearchController?.abort();
+    commonGamesSearchController = null;
+
+    const name = commonGamesSearchInput.value.trim();
+    if (!name) {
+        clearCommonGamesSearchResults();
+        setCommonGamesSearchStatus("Enter a Steam name.", "error");
+        commonGamesSearchInput.focus();
+        return;
+    }
+
+    const controller = new AbortController();
+    commonGamesSearchController = controller;
+
+    setCommonGamesSearchBusy(true);
+    setCommonGamesSearchStatus(`Searching for “${name}”…`);
+
+    try {
+        const response = await fetch(
+            `/api/steamusers/search?name=${encodeURIComponent(name)}`,
+            {
+                headers: { Accept: "application/json" },
+                signal: controller.signal,
+            },
+        );
+        if (!isCommonGamesSearchCurrent(token)) {
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (!isCommonGamesSearchCurrent(token)) {
+            return;
+        }
+
+        commonGamesState.searchUsers = Array.isArray(body?.steamUsers)
+            ? body.steamUsers
+            : [];
+
+        if (commonGamesState.searchUsers.length === 0) {
+            clearCommonGamesSearchResults();
+            setCommonGamesSearchStatus(`No users match “${name}”.`);
+            return;
+        }
+
+        renderCommonGamesSearchResults();
+        setCommonGamesSearchStatus("");
+    } catch (error) {
+        if (isAbort(error) || !isCommonGamesSearchCurrent(token)) {
+            return;
+        }
+        clearCommonGamesSearchResults();
+        setCommonGamesSearchStatus(errorMessage(error), "error");
+    } finally {
+        if (isCommonGamesSearchCurrent(token)) {
+            setCommonGamesSearchBusy(false);
+            commonGamesSearchController = null;
+        }
+    }
+}
+
+function renderCommonGamesSearchResults() {
+    if (commonGamesState.searchUsers.length === 0) {
+        commonGamesSearchResults.replaceChildren();
+        commonGamesSearchResultsPanel.hidden = true;
+        return;
+    }
+
+    commonGamesSearchResultsPanel.hidden = false;
+    commonGamesSearchResults.replaceChildren(
+        ...commonGamesState.searchUsers.map(buildCommonGamesSearchResult),
+    );
+}
+
+function clearCommonGamesSearchResults() {
+    commonGamesState.searchUsers = [];
+    commonGamesSearchResults.replaceChildren();
+    commonGamesSearchResultsPanel.hidden = true;
+}
+
+function commonGamesUserStatus(user) {
+    if (user.hasSucceededImport === true) {
+        return { label: "Ready", tone: "succeeded" };
+    }
+    if (user.latestImportStatus) {
+        return importStatus(user.latestImportStatus);
+    }
+    return { label: "Never imported", tone: "out-of-date" };
+}
+
+function buildCommonGamesSearchResult(user) {
+    const item = newElement("li", "result");
+    const main = newElement("div", "result__main");
+    const status = commonGamesUserStatus(user);
+
+    const heading = newElement("div", "result__heading");
+    heading.append(
+        newElement("p", "result__name", user.name ?? ""),
+        badge(status.label, status.tone),
+    );
+    main.append(heading);
+    main.append(newElement("p", "result__id", `Steam ID ${user.steamId ?? ""}`));
+
+    const stats = newElement("dl", "result__stats");
+    stats.append(
+        searchStat("Owned apps", formatCount(user.ownedAppCount)),
+        searchStat("Wishlist apps", formatCount(user.wishlistAppCount)),
+    );
+    main.append(stats);
+
+    const steamID = String(user.steamId ?? "");
+    const selected = commonGamesState.selectedUsers.has(steamID);
+    const atLimit = commonGamesState.selectedUsers.size >= MAX_COMMON_GAME_USERS;
+    const available = user.hasSucceededImport === true;
+
+    const action = newElement("button", "result__link");
+    action.type = "button";
+    action.dataset.addSteamId = steamID;
+
+    if (selected) {
+        action.textContent = "Added";
+        action.disabled = true;
+    } else if (!available) {
+        action.textContent = "Unavailable";
+        action.disabled = true;
+        action.title = "No completed import";
+    } else if (atLimit) {
+        action.textContent = "Add";
+        action.disabled = true;
+        action.title = `Selection limit reached (${MAX_COMMON_GAME_USERS} users).`;
+    } else {
+        action.textContent = "Add";
+    }
+
+    item.append(main, action);
+
+    if (!available) {
+        main.append(newElement("p", "hint", "No completed import yet."));
+    }
+
+    return item;
+}
+
+function addCommonGamesUser(user) {
+    const steamID = String(user.steamId ?? "");
+    if (
+        steamID === "" ||
+        user.hasSucceededImport !== true ||
+        commonGamesState.selectedUsers.size >= MAX_COMMON_GAME_USERS ||
+        commonGamesState.selectedUsers.has(steamID)
+    ) {
+        return;
+    }
+
+    commonGamesState.selectedUsers.set(steamID, user);
+    invalidateCommonGamesResults();
+    renderCommonGamesSelectedUsers();
+    renderCommonGamesSearchResults();
+}
+
+function removeCommonGamesUser(steamID) {
+    if (!commonGamesState.selectedUsers.delete(String(steamID))) {
+        return;
+    }
+
+    invalidateCommonGamesResults();
+    renderCommonGamesSelectedUsers();
+    renderCommonGamesSearchResults();
+}
+
+function renderCommonGamesSelectedUsers() {
+    const users = [...commonGamesState.selectedUsers.values()];
+    const atLimit = users.length >= MAX_COMMON_GAME_USERS;
+
+    commonGamesSelectedCount.textContent = `${users.length} / ${MAX_COMMON_GAME_USERS}`;
+    commonGamesSelectedEmpty.hidden = users.length > 0;
+    commonGamesSelectedHint.hidden = !atLimit;
+    commonGamesSelectedHint.textContent = atLimit
+        ? `Selection limit reached (${MAX_COMMON_GAME_USERS} users).`
+        : "";
+    commonGamesSelectedList.replaceChildren(
+        ...users.map(buildCommonGamesSelectedUser),
+    );
+
+    syncCommonGamesControls();
+}
+
+function buildCommonGamesSelectedUser(user) {
+    const item = newElement("li", "selected-user");
+    const main = newElement("div", "selected-user__main");
+    main.append(
+        newElement("span", "selected-user__name", user.name ?? ""),
+        newElement("span", "selected-user__id", String(user.steamId ?? "")),
+    );
+
+    const remove = newElement(
+        "button",
+        "button--secondary selected-user__remove",
+        "Remove",
+    );
+    remove.type = "button";
+    remove.dataset.removeSteamId = String(user.steamId ?? "");
+    remove.setAttribute("aria-label", `Remove ${user.name ?? "user"}`);
+    item.append(main, remove);
+
+    return item;
+}
+
+function syncCommonGamesControls() {
+    const enoughUsers = commonGamesState.selectedUsers.size >= 2;
+
+    commonGamesSubmit.disabled = !enoughUsers || commonGamesBusy;
+    commonGamesLimit.disabled = commonGamesBusy;
+    commonGamesSubmitHint.hidden = enoughUsers;
+    commonGamesSubmitHint.textContent = enoughUsers
+        ? ""
+        : "Select at least 2 users to continue.";
+}
+
+function parseCommonGamesLimit() {
+    const rawValue = commonGamesLimit.value.trim();
+    if (rawValue === "") {
+        return null;
+    }
+
+    const value = Number(rawValue);
+    if (
+        !Number.isInteger(value) ||
+        value < COMMON_GAMES_LIMIT_MIN ||
+        value > COMMON_GAMES_LIMIT_MAX
+    ) {
+        return null;
+    }
+    return value;
+}
+
+async function findCommonGames() {
+    const users = [...commonGamesState.selectedUsers.values()];
+    if (users.length < 2) {
+        setCommonGamesStatus("Select at least 2 users.", "error");
+        return;
+    }
+
+    const limit = parseCommonGamesLimit();
+    if (limit === null) {
+        setCommonGamesStatus("Enter a whole number from 1 to 100.", "error");
+        commonGamesLimit.focus();
+        return;
+    }
+
+    const token = ++commonGamesRequestToken;
+    commonGamesRequestController?.abort();
+    const controller = new AbortController();
+    commonGamesRequestController = controller;
+
+    commonGamesBusy = true;
+    syncCommonGamesControls();
+    commonGamesState.results = null;
+    clearCommonGamesResultsView();
+    commonGamesResults.setAttribute("aria-busy", "true");
+    setCommonGamesStatus("Finding common games…");
+
+    try {
+        const response = await fetch("/api/common-games", {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                steamIds: users.map((user) => String(user.steamId)),
+                limit,
+            }),
+            signal: controller.signal,
+        });
+        if (!isCommonGamesRequestCurrent(token)) {
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (!isCommonGamesRequestCurrent(token)) {
+            return;
+        }
+
+        const games = Array.isArray(body?.games) ? body.games : [];
+        commonGamesState.results = { games, users, limit };
+        renderCommonGamesResults();
+
+        if (games.length === 0) {
+            setCommonGamesStatus("");
+        } else {
+            setCommonGamesStatus(
+                `Found ${formatCount(games.length)} ${
+                    games.length === 1 ? "game" : "games"
+                }.`,
+            );
+        }
+    } catch (error) {
+        if (isAbort(error) || !isCommonGamesRequestCurrent(token)) {
+            return;
+        }
+        clearCommonGamesResultsView();
+        setCommonGamesStatus(errorMessage(error), "error");
+    } finally {
+        if (isCommonGamesRequestCurrent(token)) {
+            commonGamesBusy = false;
+            commonGamesRequestController = null;
+            commonGamesResults.setAttribute("aria-busy", "false");
+            syncCommonGamesControls();
+        }
+    }
+}
+
+function renderCommonGamesResults() {
+    const results = commonGamesState.results;
+    if (!results) {
+        return;
+    }
+
+    const { games, users } = results;
+    commonGamesResults.hidden = false;
+    commonGamesQueryUsers.replaceChildren(
+        ...users.map(buildCommonGamesQueryUser),
+    );
+    commonGamesResultsCount.textContent = `${formatCount(games.length)} ${
+        games.length === 1 ? "game" : "games"
+    }`;
+    commonGamesResultsEmpty.hidden = games.length !== 0;
+    commonGamesGameList.replaceChildren(
+        ...games.map((game, index) =>
+            buildCommonGameCard(game, users.length, index),
+        ),
+    );
+}
+
+function buildCommonGamesQueryUser(user) {
+    const chip = newElement("span", "query-users__chip");
+    chip.append(
+        newElement("span", "", user.name ?? ""),
+        newElement("span", "query-users__id", String(user.steamId ?? "")),
+    );
+    return chip;
+}
+
+function buildCommonGameCard(game, userCount, index) {
+    const item = newElement("li", "game-card");
+    const header = newElement("div", "game-card__header");
+
+    if (game.headerImage) {
+        const image = newElement("img", "game-card__image");
+        image.src = game.headerImage;
+        image.alt = "";
+        image.loading = "lazy";
+        header.append(image);
+    }
+
+    const body = newElement("div", "game-card__body");
+    const total = countValue(game.totalCommonUsers);
+    const percent = commonGamesPercent(total, userCount);
+    const meta = newElement("p", "game-card__meta");
+    meta.append(
+        newElement("span", "game-card__percent", `${percent}%`),
+        document.createTextNode(
+            ` · ${formatCount(total)} of ${formatCount(
+                userCount,
+            )} users own or wishlist this game`,
+        ),
+    );
+    body.append(
+        newElement("p", "game-card__name", game.name ?? "Unknown app"),
+        meta,
+    );
+
+    const detailsID = `common-game-details-${game.appId ?? "unknown"}-${index}`;
+    const details = newElement("div", "game-card__details");
+    details.id = detailsID;
+    details.hidden = true;
+
+    const toggle = newElement(
+        "button",
+        "button--secondary game-card__toggle",
+        "Show details",
+    );
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", detailsID);
+    toggle.addEventListener("click", () => {
+        const expanded = toggle.getAttribute("aria-expanded") === "true";
+        toggle.setAttribute("aria-expanded", String(!expanded));
+        toggle.textContent = expanded ? "Show details" : "Hide details";
+        details.hidden = expanded;
+    });
+
+    header.append(body, toggle);
+    details.append(buildCommonGameDetails(game, userCount));
+    item.append(header, details);
+
+    return item;
+}
+
+function buildCommonGameDetails(game, userCount) {
+    const fragment = document.createDocumentFragment();
+
+    if (game.headerImage) {
+        const image = newElement("img", "game-card__image game-card__image--large");
+        image.src = game.headerImage;
+        image.alt = "";
+        image.loading = "lazy";
+        fragment.append(image);
+    }
+
+    const rows = newElement("dl", "game-card__details-list");
+    rows.append(
+        buildCommonGameDetail("Release date", game.releaseDate ?? "—"),
+        buildCommonGameDetail(
+            "Owned",
+            `${formatCount(game.ownedCount ?? 0)} (${commonGamesPercent(
+                game.ownedCount ?? 0,
+                userCount,
+            )}%)`,
+        ),
+        buildCommonGameDetail(
+            "Wishlisted",
+            `${formatCount(game.wishlistCount ?? 0)} (${commonGamesPercent(
+                game.wishlistCount ?? 0,
+                userCount,
+            )}%)`,
+        ),
+        buildCommonGameDetail(
+            "Owned or wishlisted",
+            `${formatCount(game.totalCommonUsers ?? 0)} (${commonGamesPercent(
+                game.totalCommonUsers ?? 0,
+                userCount,
+            )}%)`,
+        ),
+        buildCommonGameDetail("App ID", String(game.appId ?? "")),
+    );
+    fragment.append(rows);
+
+    const store = newElement("p", "game-card__store");
+    const link = newElement("a", "", "Open on Steam");
+    link.href = `https://store.steampowered.com/app/${encodeURIComponent(
+        game.appId ?? "",
+    )}/`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    store.append(link);
+    fragment.append(store);
+
+    fragment.append(
+        newElement(
+            "p",
+            "hint",
+            "A user who owns and wishlists the same game is counted once in the combined total, so owned and wishlist percentages can add up to more than 100%.",
+        ),
+    );
+
+    return fragment;
+}
+
+function buildCommonGameDetail(label, value) {
+    const row = newElement("div", "game-card__detail");
+    row.append(newElement("dt", "", label), newElement("dd", "", value));
+    return row;
+}
+
+function commonGamesPercent(count, total) {
+    const numerator = Number(count);
+    const denominator = Number(total);
+    if (
+        !Number.isFinite(numerator) ||
+        !Number.isFinite(denominator) ||
+        denominator <= 0
+    ) {
+        return 0;
+    }
+    return Math.round((numerator / denominator) * 100);
+}
+
+function clearCommonGamesResultsView() {
+    commonGamesResults.hidden = true;
+    commonGamesResultsCount.textContent = "";
+    commonGamesQueryUsers.replaceChildren();
+    commonGamesResultsEmpty.hidden = true;
+    commonGamesGameList.replaceChildren();
+}
+
+function invalidateCommonGamesResults() {
+    commonGamesRequestToken += 1;
+    commonGamesRequestController?.abort();
+    commonGamesRequestController = null;
+    commonGamesBusy = false;
+    commonGamesState.results = null;
+    clearCommonGamesResultsView();
+    commonGamesResults.setAttribute("aria-busy", "false");
+    setCommonGamesStatus("");
+    syncCommonGamesControls();
+}
+
+function setCommonGamesSearchStatus(message, state) {
+    commonGamesSearchStatus.textContent = message;
+    if (state) {
+        commonGamesSearchStatus.dataset.state = state;
+    } else {
+        delete commonGamesSearchStatus.dataset.state;
+    }
+}
+
+function setCommonGamesStatus(message, state) {
+    commonGamesStatus.textContent = message;
+    if (state) {
+        commonGamesStatus.dataset.state = state;
+    } else {
+        delete commonGamesStatus.dataset.state;
+    }
+}
+
+function setCommonGamesSearchBusy(busy) {
+    commonGamesSearchBusy = busy;
+    commonGamesSearchInput.disabled = busy;
+    commonGamesSearchButton.disabled = busy;
+}
+
+function isCommonGamesSearchCurrent(token) {
+    return token === commonGamesSearchToken;
+}
+
+function isCommonGamesRequestCurrent(token) {
+    return token === commonGamesRequestToken;
+}
+
 function enterDashboard() {
     void loadDashboard();
 }
@@ -1324,6 +1969,7 @@ const pageLifecycles = {
     import: { enter: enterImport, leave: leaveImport },
     search: { leave: leaveSearch },
     user: { enter: enterUser, leave: leaveUser },
+    commonGames: { enter: enterCommonGames, leave: leaveCommonGames },
 };
 
 function onRouteChange(previous, next) {

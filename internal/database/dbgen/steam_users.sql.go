@@ -163,7 +163,13 @@ SELECT
         FROM import_jobs active
         WHERE active.steam_id = su.steam_id
           AND active.status IN ('queued', 'running')
-    ) AS has_active_job
+    ) AS has_active_job,
+    EXISTS (
+        SELECT 1
+        FROM import_jobs succeeded
+        WHERE succeeded.steam_id = su.steam_id
+          AND succeeded.status = 'succeeded'
+    ) AS has_succeeded_import
 FROM steam_users su
 LEFT JOIN import_jobs latest ON latest.id = (
     SELECT id
@@ -187,6 +193,7 @@ type SearchSteamUsersRow struct {
 	LatestImportStatus     sql.NullString `json:"latest_import_status"`
 	LatestImportFinishedAt sql.NullTime   `json:"latest_import_finished_at"`
 	HasActiveJob           bool           `json:"has_active_job"`
+	HasSucceededImport     bool           `json:"has_succeeded_import"`
 }
 
 func (q *Queries) SearchSteamUsers(ctx context.Context, name string) ([]SearchSteamUsersRow, error) {
@@ -209,6 +216,7 @@ func (q *Queries) SearchSteamUsers(ctx context.Context, name string) ([]SearchSt
 			&i.LatestImportStatus,
 			&i.LatestImportFinishedAt,
 			&i.HasActiveJob,
+			&i.HasSucceededImport,
 		); err != nil {
 			return nil, err
 		}

@@ -14,6 +14,7 @@
                 <a href="/import" data-route="/import">Import Steam User</a>
                 <a href="/search" data-route="/search">Search Users</a>
                 <a href="/user" data-route="/user">View User</a>
+                <a href="/common-games" data-route="/common-games">Find Common Games</a>
             </nav>
         </header>
 
@@ -325,6 +326,134 @@
                                 aria-label="App pages"
                             ></nav>
                         </div>
+                    </section>
+                </div>
+            </section>
+
+            <section id="view-common-games" data-view="/common-games" hidden>
+                <div class="card">
+                    <header class="card__header">
+                        <p class="eyebrow">Find Common Games</p>
+                        <h1 tabindex="-1">Find games your group can play together</h1>
+                        <p class="lede">
+                            Pick at least two imported Steam users, then find multiplayer
+                            games they own or want.
+                        </p>
+                    </header>
+
+                    <form id="common-games-search-form" class="lookup" novalidate>
+                        <label for="common-games-search-name">Search Steam users</label>
+                        <div class="lookup__row">
+                            <input
+                                id="common-games-search-name"
+                                name="name"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                placeholder="e.g. gaben"
+                                required
+                            />
+                            <button id="common-games-search-button" type="submit">
+                                Search
+                            </button>
+                        </div>
+                        <p class="hint">
+                            Partial, case-insensitive match on stored Steam names.
+                        </p>
+                    </form>
+
+                    <p
+                        id="common-games-search-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <section
+                        id="common-games-search-results-panel"
+                        hidden
+                        aria-labelledby="common-games-search-results-title"
+                    >
+                        <h2
+                            id="common-games-search-results-title"
+                            class="section-title"
+                        >
+                            Search results
+                        </h2>
+                        <ul id="common-games-search-results" class="result-list"></ul>
+                    </section>
+
+                    <section
+                        id="common-games-selected-panel"
+                        class="panel"
+                        aria-labelledby="common-games-selected-title"
+                    >
+                        <div class="section-heading">
+                            <h2 id="common-games-selected-title" class="section-title">
+                                Selected users
+                            </h2>
+                            <span id="common-games-selected-count" class="badge">
+                                0 / 25
+                            </span>
+                        </div>
+                        <p id="common-games-selected-empty" class="hint">
+                            No users selected yet. Search above and add at least two.
+                        </p>
+                        <ul id="common-games-selected-list" class="selected-users"></ul>
+                        <p id="common-games-selected-hint" class="hint" hidden></p>
+                    </section>
+
+                    <div class="common-games-controls">
+                        <label for="common-games-limit">
+                            Maximum games
+                            <input
+                                id="common-games-limit"
+                                type="number"
+                                min="1"
+                                max="100"
+                                step="1"
+                                value="10"
+                                inputmode="numeric"
+                            />
+                        </label>
+                        <button id="common-games-submit" type="button" disabled>
+                            Find Common Games
+                        </button>
+                    </div>
+                    <p class="hint">
+                        Choose between 1 and 100 games. The API default is 10.
+                    </p>
+                    <p id="common-games-submit-hint" class="hint">
+                        Select at least 2 users to continue.
+                    </p>
+
+                    <p
+                        id="common-games-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <section
+                        id="common-games-results"
+                        hidden
+                        aria-labelledby="common-games-results-title"
+                        aria-busy="false"
+                    >
+                        <div class="section-heading">
+                            <h2 id="common-games-results-title" class="section-title">
+                                Common games
+                            </h2>
+                            <span id="common-games-results-count" class="badge"></span>
+                        </div>
+                        <div
+                            id="common-games-query-users"
+                            class="query-users"
+                        ></div>
+                        <p id="common-games-results-empty" class="hint" hidden>
+                            No common multiplayer games found for these users.
+                        </p>
+                        <ul id="common-games-game-list" class="game-list"></ul>
                     </section>
                 </div>
             </section>
