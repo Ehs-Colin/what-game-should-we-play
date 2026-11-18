@@ -730,6 +730,45 @@ select:disabled {
     text-decoration: underline;
 }
 
+.app-store__price {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0.45rem;
+}
+
+.app-store__discount {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid var(--success-border);
+    border-radius: 999px;
+    background: var(--success-soft);
+    color: var(--success);
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.app-store__amounts {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.2;
+}
+
+.app-store__final {
+    font-variant-numeric: tabular-nums;
+}
+
+.app-store__original {
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    text-decoration: line-through;
+}
+
 .app-expand {
     display: inline-flex;
     width: 2.1rem;

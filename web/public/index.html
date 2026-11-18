@@ -14,7 +14,9 @@
                 <a href="/import" data-route="/import">Import Steam User</a>
                 <a href="/search" data-route="/search">Search Users</a>
                 <a href="/user" data-route="/user">View User</a>
-                <a href="/common-games" data-route="/common-games">Find Common Games</a>
+                <a href="/common-games" data-route="/common-games"
+                    >Find Common Games</a
+                >
             </nav>
         </header>
 
@@ -25,7 +27,8 @@
                         <p class="eyebrow">Dashboard</p>
                         <h1 tabindex="-1">Imported Steam data at a glance</h1>
                         <p class="lede">
-                            Counts come from the database and refresh while this page is open.
+                            Counts come from the database and refresh while this
+                            page is open.
                         </p>
                     </header>
 
@@ -36,7 +39,11 @@
                         aria-live="polite"
                     ></p>
 
-                    <div id="dashboard-metrics" class="metric-grid" aria-busy="true">
+                    <div
+                        id="dashboard-metrics"
+                        class="metric-grid"
+                        aria-busy="true"
+                    >
                         <article class="metric">
                             <p class="metric__label">Steam users</p>
                             <p id="metric-users" class="metric__value">—</p>
@@ -65,7 +72,8 @@
                         <p class="eyebrow">Steam Decision Engine</p>
                         <h1 tabindex="-1">Import Steam User</h1>
                         <p class="lede">
-                            Look up a Steam user by their vanity name to get started.
+                            Look up a Steam user by their vanity name to get
+                            started.
                         </p>
                     </header>
 
@@ -81,15 +89,31 @@
                                 spellcheck="false"
                                 required
                             />
-                            <button id="lookup-button" type="submit">Look up</button>
+                            <button id="lookup-button" type="submit">
+                                Look up
+                            </button>
                         </div>
-                        <p class="hint">Enter the part after steamcommunity.com/id/</p>
+                        <p class="hint">
+                            Enter the part after steamcommunity.com/id/
+                        </p>
                     </form>
 
-                    <p id="status" class="status" role="status" aria-live="polite"></p>
+                    <p
+                        id="status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
 
-                    <section id="result" class="panel" hidden aria-labelledby="result-title">
-                        <h2 id="result-title" class="section-title">Steam user</h2>
+                    <section
+                        id="result"
+                        class="panel"
+                        hidden
+                        aria-labelledby="result-title"
+                    >
+                        <h2 id="result-title" class="section-title">
+                            Steam user
+                        </h2>
                         <dl class="details">
                             <div class="details__row">
                                 <dt>Name</dt>
@@ -106,8 +130,15 @@
                         </dl>
                     </section>
 
-                    <section id="job" class="panel" hidden aria-labelledby="job-title">
-                        <h2 id="job-title" class="section-title">Library import</h2>
+                    <section
+                        id="job"
+                        class="panel"
+                        hidden
+                        aria-labelledby="job-title"
+                    >
+                        <h2 id="job-title" class="section-title">
+                            Library import
+                        </h2>
                         <p id="job-status" class="job__status"></p>
                         <dl class="details">
                             <div class="details__row">
@@ -134,8 +165,8 @@
                         <p class="eyebrow">Search Users</p>
                         <h1 tabindex="-1">Find imported Steam users</h1>
                         <p class="lede">
-                            Search by any part of a stored Steam name, then open a user to
-                            view their apps.
+                            Search by any part of a stored Steam name, then open
+                            a user to view their apps.
                         </p>
                     </header>
 
@@ -151,7 +182,9 @@
                                 placeholder="e.g. gaben"
                                 required
                             />
-                            <button id="search-button" type="submit">Search</button>
+                            <button id="search-button" type="submit">
+                                Search
+                            </button>
                         </div>
                     </form>
 
@@ -185,7 +218,11 @@
                                 <option value="private">Private</option>
                             </select>
                         </label>
-                        <button id="search-reset" type="button" class="button--secondary">
+                        <button
+                            id="search-reset"
+                            type="button"
+                            class="button--secondary"
+                        >
                             Reset
                         </button>
                     </section>
@@ -208,7 +245,8 @@
                         <p class="eyebrow">View User</p>
                         <h1 tabindex="-1">View a Steam user</h1>
                         <p class="lede">
-                            Enter an exact Steam name to see their imported library.
+                            Enter an exact Steam name to see their imported
+                            library.
                         </p>
                     </header>
 
@@ -224,11 +262,13 @@
                                 placeholder="e.g. gaben"
                                 required
                             />
-                            <button id="user-submit" type="submit">View user</button>
+                            <button id="user-submit" type="submit">
+                                View user
+                            </button>
                         </div>
                         <p class="hint">
-                            Exact name match, ignoring case. Use Search Users for partial
-                            searches.
+                            Exact name match, ignoring case. Use Search Users
+                            for partial searches.
                         </p>
                     </form>
 
@@ -246,7 +286,9 @@
                         aria-labelledby="user-summary-title"
                     >
                         <div class="section-heading">
-                            <h2 id="user-summary-title" class="section-title">Steam user</h2>
+                            <h2 id="user-summary-title" class="section-title">
+                                Steam user
+                            </h2>
                             <span
                                 id="user-status-badge"
                                 class="badge"
@@ -285,7 +327,8 @@
                                 aria-selected="false"
                                 aria-controls="user-app-panel"
                             >
-                                Wishlist (<span id="wishlist-tab-count">0</span>)
+                                Wishlist (<span id="wishlist-tab-count">0</span
+                                >)
                             </button>
                         </div>
 
@@ -312,7 +355,7 @@
                                     <thead>
                                         <tr>
                                             <th scope="col">App</th>
-                                            <th scope="col">Store</th>
+                                            <th scope="col">Price</th>
                                             <th
                                                 scope="col"
                                                 class="app-expand-heading"
@@ -338,15 +381,23 @@
                 <div class="card">
                     <header class="card__header">
                         <p class="eyebrow">Find Common Games</p>
-                        <h1 tabindex="-1">Find games your group can play together</h1>
+                        <h1 tabindex="-1">
+                            Find games your group can play together
+                        </h1>
                         <p class="lede">
-                            Pick at least two imported Steam users, then find multiplayer
-                            games they own or want.
+                            Pick at least two imported Steam users, then find
+                            multiplayer games they own or want.
                         </p>
                     </header>
 
-                    <form id="common-games-search-form" class="lookup" novalidate>
-                        <label for="common-games-search-name">Search Steam users</label>
+                    <form
+                        id="common-games-search-form"
+                        class="lookup"
+                        novalidate
+                    >
+                        <label for="common-games-search-name"
+                            >Search Steam users</label
+                        >
                         <div class="lookup__row">
                             <input
                                 id="common-games-search-name"
@@ -357,12 +408,16 @@
                                 placeholder="e.g. gaben"
                                 required
                             />
-                            <button id="common-games-search-button" type="submit">
+                            <button
+                                id="common-games-search-button"
+                                type="submit"
+                            >
                                 Search
                             </button>
                         </div>
                         <p class="hint">
-                            Partial, case-insensitive match on stored Steam names.
+                            Partial, case-insensitive match on stored Steam
+                            names.
                         </p>
                     </form>
 
@@ -384,7 +439,10 @@
                         >
                             Search results
                         </h2>
-                        <ul id="common-games-search-results" class="result-list"></ul>
+                        <ul
+                            id="common-games-search-results"
+                            class="result-list"
+                        ></ul>
                     </section>
 
                     <section
@@ -393,18 +451,32 @@
                         aria-labelledby="common-games-selected-title"
                     >
                         <div class="section-heading">
-                            <h2 id="common-games-selected-title" class="section-title">
+                            <h2
+                                id="common-games-selected-title"
+                                class="section-title"
+                            >
                                 Selected users
                             </h2>
-                            <span id="common-games-selected-count" class="badge">
+                            <span
+                                id="common-games-selected-count"
+                                class="badge"
+                            >
                                 0 / 25
                             </span>
                         </div>
                         <p id="common-games-selected-empty" class="hint">
-                            No users selected yet. Search above and add at least two.
+                            No users selected yet. Search above and add at least
+                            two.
                         </p>
-                        <ul id="common-games-selected-list" class="selected-users"></ul>
-                        <p id="common-games-selected-hint" class="hint" hidden></p>
+                        <ul
+                            id="common-games-selected-list"
+                            class="selected-users"
+                        ></ul>
+                        <p
+                            id="common-games-selected-hint"
+                            class="hint"
+                            hidden
+                        ></p>
                     </section>
 
                     <div class="common-games-controls">
@@ -445,10 +517,16 @@
                         aria-busy="false"
                     >
                         <div class="section-heading">
-                            <h2 id="common-games-results-title" class="section-title">
+                            <h2
+                                id="common-games-results-title"
+                                class="section-title"
+                            >
                                 Common games
                             </h2>
-                            <span id="common-games-results-count" class="badge"></span>
+                            <span
+                                id="common-games-results-count"
+                                class="badge"
+                            ></span>
                         </div>
                         <div
                             id="common-games-query-users"
@@ -457,12 +535,18 @@
                         <p id="common-games-results-empty" class="hint" hidden>
                             No common multiplayer games found for these users.
                         </p>
-                        <div id="common-games-table-scroll" class="table-scroll">
-                            <table id="common-games-app-table" class="app-table">
+                        <div
+                            id="common-games-table-scroll"
+                            class="table-scroll"
+                        >
+                            <table
+                                id="common-games-app-table"
+                                class="app-table"
+                            >
                                 <thead>
                                     <tr>
                                         <th scope="col">App</th>
-                                        <th scope="col">Store</th>
+                                        <th scope="col">Price</th>
                                         <th
                                             scope="col"
                                             class="app-expand-heading"
@@ -473,10 +557,13 @@
                                 <tbody id="common-games-game-rows"></tbody>
                             </table>
                         </div>
-                        <p id="common-games-note" class="hint common-games-note">
-                            A user who owns and wishlists the same game is counted
-                            once in the combined total, so owned and wishlist
-                            percentages can add up to more than 100%.
+                        <p
+                            id="common-games-note"
+                            class="hint common-games-note"
+                        >
+                            A user who owns and wishlists the same game is
+                            counted once in the combined total, so owned and
+                            wishlist percentages can add up to more than 100%.
                         </p>
                     </section>
                 </div>

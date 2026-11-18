@@ -151,9 +151,9 @@ func (handler *Handler) GetImportJob(responseWriter http.ResponseWriter, request
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, newImportJobView(job))
 }
 
-func (handler *Handler) GetSteamUserById(responseWriter http.ResponseWriter, request *http.Request) {
+// func (handler *Handler) GetSteamUserById(responseWriter http.ResponseWriter, request *http.Request) {
 
-}
+// }
 
 func (handler *Handler) GetSteamUserByName(responseWriter http.ResponseWriter, request *http.Request) {
 	name := strings.TrimSpace(request.URL.Query().Get("name"))
@@ -484,9 +484,9 @@ func parsePageSize(value string) (int, bool) {
 	}
 }
 
-func (handler *Handler) GetSteamUsers(responseWriter http.ResponseWriter, request *http.Request) {
+// func (handler *Handler) GetSteamUsers(responseWriter http.ResponseWriter, request *http.Request) {
 
-}
+// }
 
 func (handler *Handler) internalError(responseWriter http.ResponseWriter, request *http.Request, err error) {
 	if handler.logger != nil {

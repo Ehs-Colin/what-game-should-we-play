@@ -1140,13 +1140,22 @@ function buildUserAppRows(app, index) {
         image.loading = "lazy";
         body.append(image);
     }
-    body.append(newElement("span", "app-cell__name", app.name ?? "Unknown app"));
+    const info = newElement("div", "app-cell__info");
+    info.append(newElement("span", "app-cell__name", app.name ?? "Unknown app"));
+
+    const releaseLabel = appReleaseLabel(app);
+    if (releaseLabel !== "—") {
+        info.append(newElement("p", "app-cell__meta", releaseLabel));
+    }
+
+    body.append(info);
     nameCell.append(body);
 
     const storeCell = newElement("td", "app-store");
 
     const priceLabel = appPriceLabel(app);
-    const storeLink = newElement("a", "app-store__link", priceLabel);
+    const storeLink = newElement("a", "app-store__link");
+    storeLink.append(buildAppPriceContent(app));
     storeLink.href = `https://store.steampowered.com/app/${encodeURIComponent(app.appId)}/`;
     storeLink.target = "_blank";
     storeLink.rel = "noopener noreferrer";
@@ -1208,7 +1217,42 @@ function appPriceLabel(app) {
         typeof app.priceFinalFormatted === "string"
             ? app.priceFinalFormatted.trim()
             : "";
+    const discount = countValue(app.priceDiscountPercent);
+    const initial = formatAppPrice(app.priceInitial, app.priceCurrency);
+
+    if (formatted && discount > 0) {
+        return initial
+            ? `${formatted}, ${discount}% off from ${initial}`
+            : `${formatted}, ${discount}% off`;
+    }
     return formatted || "View on Steam";
+}
+
+function buildAppPriceContent(app) {
+    const formatted =
+        typeof app.priceFinalFormatted === "string"
+            ? app.priceFinalFormatted.trim()
+            : "";
+    const discount = countValue(app.priceDiscountPercent);
+    const initial = formatAppPrice(app.priceInitial, app.priceCurrency);
+
+    if (discount <= 0 || (!formatted && !initial)) {
+        return document.createTextNode(formatted || "View on Steam");
+    }
+
+    const price = newElement("span", "app-store__price");
+    price.append(newElement("span", "app-store__discount", `-${discount}%`));
+
+    const amounts = newElement("span", "app-store__amounts");
+    if (initial) {
+        amounts.append(newElement("s", "app-store__original", initial));
+    }
+    if (formatted) {
+        amounts.append(newElement("span", "app-store__final", formatted));
+    }
+    price.append(amounts);
+
+    return price;
 }
 
 function buildUserAppDetails(app) {
@@ -1886,7 +1930,8 @@ function buildCommonGameRows(game, userCount, index) {
 
     const storeCell = newElement("td", "app-store");
     const priceLabel = appPriceLabel(game);
-    const storeLink = newElement("a", "app-store__link", priceLabel);
+    const storeLink = newElement("a", "app-store__link");
+    storeLink.append(buildAppPriceContent(game));
     storeLink.href = `https://store.steampowered.com/app/${encodeURIComponent(game.appId)}/`;
     storeLink.target = "_blank";
     storeLink.rel = "noopener noreferrer";
