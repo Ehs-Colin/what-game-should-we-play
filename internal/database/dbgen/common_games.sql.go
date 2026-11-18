@@ -61,7 +61,17 @@ SELECT
     a.release_coming_soon,
     COUNT(*) FILTER (WHERE pu.owned)::bigint AS owned_count,
     COUNT(*) FILTER (WHERE pu.wishlisted)::bigint AS wishlist_count,
-    COUNT(*)::bigint AS total_common_users
+    COUNT(*)::bigint AS total_common_users,
+    COALESCE(
+        STRING_AGG(pu.steam_id::text, ',' ORDER BY pu.steam_id)
+            FILTER (WHERE pu.owned),
+        ''
+    )::text AS owned_steam_ids,
+    COALESCE(
+        STRING_AGG(pu.steam_id::text, ',' ORDER BY pu.steam_id)
+            FILTER (WHERE pu.wishlisted),
+        ''
+    )::text AS wishlisted_steam_ids
 FROM per_user pu
 JOIN apps a ON a.steam_appid = pu.app_id
 WHERE EXISTS (
@@ -124,6 +134,8 @@ type ListCommonGamesRow struct {
 	OwnedCount           int64          `json:"owned_count"`
 	WishlistCount        int64          `json:"wishlist_count"`
 	TotalCommonUsers     int64          `json:"total_common_users"`
+	OwnedSteamIds        string         `json:"owned_steam_ids"`
+	WishlistedSteamIds   string         `json:"wishlisted_steam_ids"`
 }
 
 func (q *Queries) ListCommonGames(ctx context.Context, arg ListCommonGamesParams) ([]ListCommonGamesRow, error) {
@@ -155,6 +167,8 @@ func (q *Queries) ListCommonGames(ctx context.Context, arg ListCommonGamesParams
 			&i.OwnedCount,
 			&i.WishlistCount,
 			&i.TotalCommonUsers,
+			&i.OwnedSteamIds,
+			&i.WishlistedSteamIds,
 		); err != nil {
 			return nil, err
 		}

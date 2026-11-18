@@ -36,6 +36,18 @@
     display: none !important;
 }
 
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 body {
     margin: 0;
     min-height: 100vh;
@@ -304,6 +316,25 @@ select:disabled {
 
 .details__row:last-child {
     border-bottom: 0;
+}
+
+.details__row--with-users {
+    padding-bottom: 0.15rem;
+    border-bottom: 0;
+}
+
+.details__row--users {
+    justify-content: flex-start;
+    padding-top: 0;
+}
+
+.details__row--users dd {
+    width: 100%;
+    text-align: left;
+}
+
+.details__empty {
+    color: var(--muted);
 }
 
 .details dt {
@@ -688,10 +719,10 @@ select:disabled {
     align-items: center;
     margin-right: 0.35rem;
     padding: 0.15rem 0.5rem;
-    border: 1px solid var(--success-border);
+    border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 999px;
-    background: var(--success-soft);
-    color: var(--success);
+    background: var(--percent-color, var(--success-soft));
+    color: var(--percent-text, var(--success));
     font-size: 0.8rem;
     font-variant-numeric: tabular-nums;
     font-weight: 800;
@@ -955,6 +986,12 @@ select:disabled {
     margin: 0.25rem 0 1rem;
 }
 
+.common-game-users {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
 .query-users__chip {
     display: inline-flex;
     flex-wrap: wrap;
@@ -968,15 +1005,19 @@ select:disabled {
     font-weight: 600;
 }
 
-.query-users__id {
-    color: var(--muted);
-    font-size: 0.7rem;
-    font-variant-numeric: tabular-nums;
-    font-weight: 500;
+.query-users__name {
+    color: var(--accent);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.query-users__name:hover {
+    text-decoration: underline;
 }
 
 .common-games-note {
     margin: 0.65rem 0 0;
+    text-align: right;
 }
 
 @media (max-width: 48rem) {

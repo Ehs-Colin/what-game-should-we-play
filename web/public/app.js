@@ -1880,24 +1880,66 @@ function renderCommonGamesResults() {
     commonGamesNote.hidden = games.length === 0;
     commonGamesGameRows.replaceChildren(
         ...games.flatMap((game, index) =>
-            buildCommonGameRows(game, users.length, index),
+            buildCommonGameRows(game, users, index),
         ),
     );
 }
 
 function buildCommonGamesQueryUser(user) {
     const chip = newElement("span", "query-users__chip");
-    chip.append(
-        newElement("span", "", user.name ?? ""),
-        newElement("span", "query-users__id", String(user.steamId ?? "")),
-    );
+    const link = newElement("a", "query-users__name", user.name ?? "");
+    link.href = `/user?name=${encodeURIComponent(user.name ?? "")}`;
+    link.dataset.route = "/user";
+    chip.append(link);
     return chip;
 }
 
-function buildCommonGameRows(game, userCount, index) {
+function buildCommonGameUsers(users) {
+    if (users.length === 0) {
+        return newElement("span", "details__empty", "None");
+    }
+
+    const container = newElement("span", "common-game-users");
+    container.append(
+        ...users.map((user) => buildCommonGamesQueryUser(user)),
+    );
+    return container;
+}
+
+function commonGamesUsersForIDs(users, steamIDs) {
+    const ids = new Set(
+        (Array.isArray(steamIDs) ? steamIDs : []).map((id) => String(id)),
+    );
+    return users.filter((user) => ids.has(String(user.steamId ?? "")));
+}
+
+function commonGamesMissingUsers(users, ownedSteamIDs, wishlistedSteamIDs) {
+    const present = new Set(
+        [
+            ...(Array.isArray(ownedSteamIDs) ? ownedSteamIDs : []),
+            ...(Array.isArray(wishlistedSteamIDs) ? wishlistedSteamIDs : []),
+        ].map((id) => String(id)),
+    );
+    return users.filter((user) => !present.has(String(user.steamId ?? "")));
+}
+
+function detailRowWithUsers(label, value, users, accessibleLabel) {
+    const summary = detailRow(label, value);
+    summary.classList.add("details__row--with-users");
+
+    const userRow = newElement("div", "details__row details__row--users");
+    const term = newElement("dt", "visually-hidden", accessibleLabel);
+    const description = newElement("dd", "details__users");
+    description.append(buildCommonGameUsers(users));
+    userRow.append(term, description);
+    return [summary, userRow];
+}
+
+function buildCommonGameRows(game, users, index) {
     const row = document.createElement("tr");
     row.className = "app-row";
 
+    const userCount = users.length;
     const nameCell = newElement("td", "app-cell");
     const body = newElement("div", "app-cell__body");
     if (game.headerImage) {
@@ -1912,7 +1954,7 @@ function buildCommonGameRows(game, userCount, index) {
     const percent = commonGamesPercent(total, userCount);
     const meta = newElement("p", "app-cell__meta");
     meta.append(
-        newElement("span", "app-cell__percent", `${percent}%`),
+        buildCommonGamesPercentBadge(percent),
         document.createTextNode(
             ` · ${formatCount(total)} of ${formatCount(
                 userCount,
@@ -1967,7 +2009,7 @@ function buildCommonGameRows(game, userCount, index) {
 
     const details = newElement("div", "app-details");
     details.id = detailsID;
-    details.append(buildCommonGameDetails(game, userCount));
+    details.append(buildCommonGameDetails(game, users));
     detailsCell.append(details);
     detailsRow.append(detailsCell);
 
@@ -1988,8 +2030,19 @@ function buildCommonGameRows(game, userCount, index) {
     return [row, detailsRow];
 }
 
-function buildCommonGameDetails(game, userCount) {
+function buildCommonGameDetails(game, users) {
     const fragment = document.createDocumentFragment();
+    const userCount = users.length;
+    const ownedUsers = commonGamesUsersForIDs(users, game.ownedSteamIds);
+    const wishlistedUsers = commonGamesUsersForIDs(
+        users,
+        game.wishlistedSteamIds,
+    );
+    const missingUsers = commonGamesMissingUsers(
+        users,
+        game.ownedSteamIds,
+        game.wishlistedSteamIds,
+    );
 
     if (game.headerImage) {
         const image = newElement(
@@ -2018,19 +2071,29 @@ function buildCommonGameDetails(game, userCount) {
     const rows = newElement("dl", "details app-details__list");
     rows.append(
         detailRow("Release date", appReleaseLabel(game)),
-        detailRow(
+        ...detailRowWithUsers(
             "Owned",
             `${formatCount(game.ownedCount ?? 0)} (${commonGamesPercent(
                 game.ownedCount ?? 0,
                 userCount,
             )}%)`,
+            ownedUsers,
+            "Users who own this game",
         ),
-        detailRow(
+        ...detailRowWithUsers(
             "Wishlisted",
             `${formatCount(game.wishlistCount ?? 0)} (${commonGamesPercent(
                 game.wishlistCount ?? 0,
                 userCount,
             )}%)`,
+            wishlistedUsers,
+            "Users who have this game on their wishlist",
+        ),
+        ...detailRowWithUsers(
+            "Missing",
+            "",
+            missingUsers,
+            "Users who do not own or wishlist this game",
         ),
         detailRow("Price", appPriceDetail(game)),
         detailRow("Platforms", appPlatformsLabel(game)),
@@ -2052,6 +2115,69 @@ function commonGamesPercent(count, total) {
         return 0;
     }
     return Math.round((numerator / denominator) * 100);
+}
+
+const COMMON_GAMES_PERCENT_STOPS = [
+    { percent: 40, color: [220, 38, 38] }, // red
+    { percent: 60, color: [249, 115, 22] }, // orange
+    { percent: 80, color: [234, 179, 8] }, // yellow
+    { percent: 100, color: [22, 163, 74] }, // green
+];
+
+function buildCommonGamesPercentBadge(percent) {
+    const badge = newElement("span", "app-cell__percent", `${percent}%`);
+    const value = Math.min(100, Math.max(0, Number(percent) || 0));
+    const color = commonGamesPercentColor(value);
+
+    badge.style.setProperty("--percent-color", formatRGBColor(color));
+    badge.style.setProperty(
+        "--percent-text",
+        commonGamesPercentTextColor(color),
+    );
+    return badge;
+}
+
+function commonGamesPercentColor(percent) {
+    if (percent <= 40) {
+        return COMMON_GAMES_PERCENT_STOPS[0].color;
+    }
+
+    for (let index = 1; index < COMMON_GAMES_PERCENT_STOPS.length; index += 1) {
+        const next = COMMON_GAMES_PERCENT_STOPS[index];
+        if (percent <= next.percent) {
+            const previous = COMMON_GAMES_PERCENT_STOPS[index - 1];
+            const position =
+                (percent - previous.percent) / (next.percent - previous.percent);
+            return previous.color.map((channel, channelIndex) =>
+                Math.round(
+                    channel +
+                        (next.color[channelIndex] - channel) * position,
+                ),
+            );
+        }
+    }
+
+    return COMMON_GAMES_PERCENT_STOPS[COMMON_GAMES_PERCENT_STOPS.length - 1]
+        .color;
+}
+
+function formatRGBColor([red, green, blue]) {
+    return `rgb(${red}, ${green}, ${blue})`;
+}
+
+function commonGamesPercentTextColor([red, green, blue]) {
+    const luminance =
+        0.2126 * linearColorChannel(red) +
+        0.7152 * linearColorChannel(green) +
+        0.0722 * linearColorChannel(blue);
+    return luminance > 0.22 ? "#1b2430" : "#ffffff";
+}
+
+function linearColorChannel(value) {
+    const channel = value / 255;
+    return channel <= 0.03928
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
 }
 
 function clearCommonGamesResultsView() {

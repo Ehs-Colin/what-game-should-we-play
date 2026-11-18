@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbgen"
@@ -79,9 +80,11 @@ type commonGameView struct {
 	Name        *string `json:"name"`
 	HeaderImage *string `json:"headerImage"`
 	appDetailView
-	OwnedCount       int64 `json:"ownedCount"`
-	WishlistCount    int64 `json:"wishlistCount"`
-	TotalCommonUsers int64 `json:"totalCommonUsers"`
+	OwnedCount         int64    `json:"ownedCount"`
+	WishlistCount      int64    `json:"wishlistCount"`
+	TotalCommonUsers   int64    `json:"totalCommonUsers"`
+	OwnedSteamIDs      []string `json:"ownedSteamIds"`
+	WishlistedSteamIDs []string `json:"wishlistedSteamIds"`
 }
 
 func newCommonGameView(row dbgen.ListCommonGamesRow) commonGameView {
@@ -103,9 +106,11 @@ func newCommonGameView(row dbgen.ListCommonGamesRow) commonGameView {
 			ReleaseDate:          nullableString(row.ReleaseDate),
 			ReleaseComingSoon:    nullableBool(row.ReleaseComingSoon),
 		},
-		OwnedCount:       row.OwnedCount,
-		WishlistCount:    row.WishlistCount,
-		TotalCommonUsers: row.TotalCommonUsers,
+		OwnedCount:         row.OwnedCount,
+		WishlistCount:      row.WishlistCount,
+		TotalCommonUsers:   row.TotalCommonUsers,
+		OwnedSteamIDs:      splitSteamIDList(row.OwnedSteamIds),
+		WishlistedSteamIDs: splitSteamIDList(row.WishlistedSteamIds),
 	}
 }
 
@@ -189,6 +194,13 @@ func newImportJobView(job dbgen.ImportJob) importJobView {
 
 func formatSteamID(steamID int64) string {
 	return strconv.FormatInt(steamID, 10)
+}
+
+func splitSteamIDList(value string) []string {
+	if value == "" {
+		return []string{}
+	}
+	return strings.Split(value, ",")
 }
 
 func nullableString(value sql.NullString) *string {

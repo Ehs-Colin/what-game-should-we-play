@@ -181,6 +181,19 @@ func assertCommonGameCounts(t *testing.T, game commonGameView, owned, wishlist, 
 	}
 }
 
+func assertCommonGameSteamIDs(t *testing.T, label string, got []string, want ...int64) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s steam IDs = %v, want %v", label, got, want)
+	}
+	for index, steamID := range want {
+		expected := strconv.FormatInt(steamID, 10)
+		if got[index] != expected {
+			t.Fatalf("%s steam IDs = %v, want %v", label, got, want)
+		}
+	}
+}
+
 func TestCommonGamesHappyPath(t *testing.T) {
 	env := newHandlerEnv(t, defaultResolver())
 	seedImportedCommonUser(t, env, commonGamesAlice)
@@ -258,7 +271,11 @@ func TestCommonGamesHappyPath(t *testing.T) {
 		t.Fatalf("platformLinux = %v", shared.PlatformLinux)
 	}
 	assertCommonGameCounts(t, shared, 2, 0, 2)
+	assertCommonGameSteamIDs(t, "owned", shared.OwnedSteamIDs, commonGamesAlice, commonGamesBob)
+	assertCommonGameSteamIDs(t, "wishlisted", shared.WishlistedSteamIDs)
 	assertCommonGameCounts(t, games.Games[1], 0, 2, 2)
+	assertCommonGameSteamIDs(t, "owned", games.Games[1].OwnedSteamIDs)
+	assertCommonGameSteamIDs(t, "wishlisted", games.Games[1].WishlistedSteamIDs, commonGamesAlice, commonGamesBob)
 }
 
 func TestCommonGamesCategoryFilter(t *testing.T) {
