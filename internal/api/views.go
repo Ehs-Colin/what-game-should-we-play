@@ -26,10 +26,7 @@ func newSteamUserView(user dbgen.SteamUser) steamUserView {
 	}
 }
 
-type appSummaryView struct {
-	AppID                int32   `json:"appId"`
-	Name                 *string `json:"name"`
-	HeaderImage          *string `json:"headerImage"`
+type appDetailView struct {
 	ShortDescription     *string `json:"shortDescription"`
 	Website              *string `json:"website"`
 	PriceCurrency        *string `json:"priceCurrency"`
@@ -44,11 +41,8 @@ type appSummaryView struct {
 	ReleaseComingSoon    *bool   `json:"releaseComingSoon"`
 }
 
-func newAppSummaryView(app dbgen.App) appSummaryView {
-	return appSummaryView{
-		AppID:                app.SteamAppid,
-		Name:                 nullableString(app.Name),
-		HeaderImage:          nullableString(app.HeaderImage),
+func newAppDetailView(app dbgen.App) appDetailView {
+	return appDetailView{
 		ShortDescription:     nullableString(app.ShortDescription),
 		Website:              nullableString(app.Website),
 		PriceCurrency:        nullableString(app.PriceCurrency),
@@ -64,33 +58,55 @@ func newAppSummaryView(app dbgen.App) appSummaryView {
 	}
 }
 
+type appSummaryView struct {
+	AppID       int32   `json:"appId"`
+	Name        *string `json:"name"`
+	HeaderImage *string `json:"headerImage"`
+	appDetailView
+}
+
+func newAppSummaryView(app dbgen.App) appSummaryView {
+	return appSummaryView{
+		AppID:         app.SteamAppid,
+		Name:          nullableString(app.Name),
+		HeaderImage:   nullableString(app.HeaderImage),
+		appDetailView: newAppDetailView(app),
+	}
+}
+
 type commonGameView struct {
-	AppID            int32   `json:"appId"`
-	Name             *string `json:"name"`
-	HeaderImage      *string `json:"headerImage"`
-	ReleaseDate      *string `json:"releaseDate"`
-	OwnedCount       int64   `json:"ownedCount"`
-	WishlistCount    int64   `json:"wishlistCount"`
-	TotalCommonUsers int64   `json:"totalCommonUsers"`
+	AppID       int32   `json:"appId"`
+	Name        *string `json:"name"`
+	HeaderImage *string `json:"headerImage"`
+	appDetailView
+	OwnedCount       int64 `json:"ownedCount"`
+	WishlistCount    int64 `json:"wishlistCount"`
+	TotalCommonUsers int64 `json:"totalCommonUsers"`
 }
 
 func newCommonGameView(row dbgen.ListCommonGamesRow) commonGameView {
-	view := commonGameView{
-		AppID:            row.SteamAppid,
+	return commonGameView{
+		AppID:       row.SteamAppid,
+		Name:        nullableString(row.Name),
+		HeaderImage: nullableString(row.HeaderImage),
+		appDetailView: appDetailView{
+			ShortDescription:     nullableString(row.ShortDescription),
+			Website:              nullableString(row.Website),
+			PriceCurrency:        nullableString(row.PriceCurrency),
+			PriceInitial:         nullableInt32(row.PriceInitial),
+			PriceFinal:           nullableInt32(row.PriceFinal),
+			PriceDiscountPercent: nullableInt32(row.PriceDiscountPercent),
+			PriceFinalFormatted:  nullableString(row.PriceFinalFormatted),
+			PlatformWindows:      nullableBool(row.PlatformWindows),
+			PlatformMac:          nullableBool(row.PlatformMac),
+			PlatformLinux:        nullableBool(row.PlatformLinux),
+			ReleaseDate:          nullableString(row.ReleaseDate),
+			ReleaseComingSoon:    nullableBool(row.ReleaseComingSoon),
+		},
 		OwnedCount:       row.OwnedCount,
 		WishlistCount:    row.WishlistCount,
 		TotalCommonUsers: row.TotalCommonUsers,
 	}
-	if row.Name.Valid {
-		view.Name = &row.Name.String
-	}
-	if row.HeaderImage.Valid {
-		view.HeaderImage = &row.HeaderImage.String
-	}
-	if row.ReleaseDate.Valid {
-		view.ReleaseDate = &row.ReleaseDate.String
-	}
-	return view
 }
 
 type steamUserSummaryView struct {

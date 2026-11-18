@@ -457,7 +457,27 @@
                         <p id="common-games-results-empty" class="hint" hidden>
                             No common multiplayer games found for these users.
                         </p>
-                        <ul id="common-games-game-list" class="game-list"></ul>
+                        <div id="common-games-table-scroll" class="table-scroll">
+                            <table id="common-games-app-table" class="app-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">App</th>
+                                        <th scope="col">Store</th>
+                                        <th
+                                            scope="col"
+                                            class="app-expand-heading"
+                                            aria-label="Expand"
+                                        ></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="common-games-game-rows"></tbody>
+                            </table>
+                        </div>
+                        <p id="common-games-note" class="hint common-games-note">
+                            A user who owns and wishlists the same game is counted
+                            once in the combined total, so owned and wishlist
+                            percentages can add up to more than 100%.
+                        </p>
                     </section>
                 </div>
             </section>

@@ -46,8 +46,19 @@ SELECT
     a.steam_appid,
     a.name,
     a.header_image,
+    a.short_description,
+    a.website,
+    a.price_currency,
+    a.price_initial,
+    a.price_final,
+    a.price_discount_percent,
+    a.price_final_formatted,
+    a.platform_windows,
+    a.platform_mac,
+    a.platform_linux,
     a.release_date,
     a.release_date_parsed,
+    a.release_coming_soon,
     COUNT(*) FILTER (WHERE pu.owned)::bigint AS owned_count,
     COUNT(*) FILTER (WHERE pu.wishlisted)::bigint AS wishlist_count,
     COUNT(*)::bigint AS total_common_users
@@ -66,8 +77,19 @@ GROUP BY
     a.steam_appid,
     a.name,
     a.header_image,
+    a.short_description,
+    a.website,
+    a.price_currency,
+    a.price_initial,
+    a.price_final,
+    a.price_discount_percent,
+    a.price_final_formatted,
+    a.platform_windows,
+    a.platform_mac,
+    a.platform_linux,
     a.release_date,
-    a.release_date_parsed
+    a.release_date_parsed,
+    a.release_coming_soon
 ORDER BY
     total_common_users DESC,
     owned_count DESC,
@@ -83,14 +105,25 @@ type ListCommonGamesParams struct {
 }
 
 type ListCommonGamesRow struct {
-	SteamAppid        int32          `json:"steam_appid"`
-	Name              sql.NullString `json:"name"`
-	HeaderImage       sql.NullString `json:"header_image"`
-	ReleaseDate       sql.NullString `json:"release_date"`
-	ReleaseDateParsed sql.NullTime   `json:"release_date_parsed"`
-	OwnedCount        int64          `json:"owned_count"`
-	WishlistCount     int64          `json:"wishlist_count"`
-	TotalCommonUsers  int64          `json:"total_common_users"`
+	SteamAppid           int32          `json:"steam_appid"`
+	Name                 sql.NullString `json:"name"`
+	HeaderImage          sql.NullString `json:"header_image"`
+	ShortDescription     sql.NullString `json:"short_description"`
+	Website              sql.NullString `json:"website"`
+	PriceCurrency        sql.NullString `json:"price_currency"`
+	PriceInitial         sql.NullInt32  `json:"price_initial"`
+	PriceFinal           sql.NullInt32  `json:"price_final"`
+	PriceDiscountPercent sql.NullInt32  `json:"price_discount_percent"`
+	PriceFinalFormatted  sql.NullString `json:"price_final_formatted"`
+	PlatformWindows      sql.NullBool   `json:"platform_windows"`
+	PlatformMac          sql.NullBool   `json:"platform_mac"`
+	PlatformLinux        sql.NullBool   `json:"platform_linux"`
+	ReleaseDate          sql.NullString `json:"release_date"`
+	ReleaseDateParsed    sql.NullTime   `json:"release_date_parsed"`
+	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
+	OwnedCount           int64          `json:"owned_count"`
+	WishlistCount        int64          `json:"wishlist_count"`
+	TotalCommonUsers     int64          `json:"total_common_users"`
 }
 
 func (q *Queries) ListCommonGames(ctx context.Context, arg ListCommonGamesParams) ([]ListCommonGamesRow, error) {
@@ -106,8 +139,19 @@ func (q *Queries) ListCommonGames(ctx context.Context, arg ListCommonGamesParams
 			&i.SteamAppid,
 			&i.Name,
 			&i.HeaderImage,
+			&i.ShortDescription,
+			&i.Website,
+			&i.PriceCurrency,
+			&i.PriceInitial,
+			&i.PriceFinal,
+			&i.PriceDiscountPercent,
+			&i.PriceFinalFormatted,
+			&i.PlatformWindows,
+			&i.PlatformMac,
+			&i.PlatformLinux,
 			&i.ReleaseDate,
 			&i.ReleaseDateParsed,
+			&i.ReleaseComingSoon,
 			&i.OwnedCount,
 			&i.WishlistCount,
 			&i.TotalCommonUsers,

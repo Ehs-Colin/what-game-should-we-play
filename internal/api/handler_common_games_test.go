@@ -23,13 +23,23 @@ const (
 )
 
 type commonGameSeed struct {
-	AppID             int32
-	Name              string
-	HeaderImage       string
-	ReleaseDate       string
-	ReleaseDateParsed sql.NullTime
-	ComingSoon        bool
-	Categories        []int32
+	AppID                int32
+	Name                 string
+	HeaderImage          string
+	ShortDescription     string
+	Website              string
+	PriceCurrency        string
+	PriceInitial         sql.NullInt32
+	PriceFinal           sql.NullInt32
+	PriceDiscountPercent sql.NullInt32
+	PriceFinalFormatted  string
+	PlatformWindows      sql.NullBool
+	PlatformMac          sql.NullBool
+	PlatformLinux        sql.NullBool
+	ReleaseDate          string
+	ReleaseDateParsed    sql.NullTime
+	ComingSoon           bool
+	Categories           []int32
 }
 
 func seedCommonGame(t *testing.T, env *handlerEnv, seed commonGameSeed) {
@@ -41,11 +51,31 @@ func seedCommonGame(t *testing.T, env *handlerEnv, seed commonGameSeed) {
 	if _, err := env.db.ExecContext(ctx, `
 		UPDATE apps SET
 			header_image = $1,
-			release_date = $2,
-			release_date_parsed = $3,
-			release_coming_soon = $4
-		WHERE steam_appid = $5`,
+			short_description = $2,
+			website = $3,
+			price_currency = $4,
+			price_initial = $5,
+			price_final = $6,
+			price_discount_percent = $7,
+			price_final_formatted = $8,
+			platform_windows = $9,
+			platform_mac = $10,
+			platform_linux = $11,
+			release_date = $12,
+			release_date_parsed = $13,
+			release_coming_soon = $14
+		WHERE steam_appid = $15`,
 		sql.NullString{String: seed.HeaderImage, Valid: seed.HeaderImage != ""},
+		sql.NullString{String: seed.ShortDescription, Valid: seed.ShortDescription != ""},
+		sql.NullString{String: seed.Website, Valid: seed.Website != ""},
+		sql.NullString{String: seed.PriceCurrency, Valid: seed.PriceCurrency != ""},
+		seed.PriceInitial,
+		seed.PriceFinal,
+		seed.PriceDiscountPercent,
+		sql.NullString{String: seed.PriceFinalFormatted, Valid: seed.PriceFinalFormatted != ""},
+		seed.PlatformWindows,
+		seed.PlatformMac,
+		seed.PlatformLinux,
 		sql.NullString{String: seed.ReleaseDate, Valid: seed.ReleaseDate != ""},
 		seed.ReleaseDateParsed,
 		seed.ComingSoon,
@@ -157,12 +187,22 @@ func TestCommonGamesHappyPath(t *testing.T) {
 	seedImportedCommonUser(t, env, commonGamesBob)
 
 	seedCommonGame(t, env, commonGameSeed{
-		AppID:             730,
-		Name:              "Counter-Strike 2",
-		HeaderImage:       "https://cdn.example.test/steam/apps/730/header.jpg",
-		ReleaseDate:       "21 Nov, 2024",
-		ReleaseDateParsed: sql.NullTime{Time: time.Date(2024, time.November, 21, 0, 0, 0, 0, time.UTC), Valid: true},
-		Categories:        []int32{1},
+		AppID:                730,
+		Name:                 "Counter-Strike 2",
+		HeaderImage:          "https://cdn.example.test/steam/apps/730/header.jpg",
+		ShortDescription:     "A tactical multiplayer shooter.",
+		Website:              "https://www.counter-strike.net/",
+		PriceCurrency:        "USD",
+		PriceInitial:         sql.NullInt32{Int32: 1999, Valid: true},
+		PriceFinal:           sql.NullInt32{Int32: 999, Valid: true},
+		PriceDiscountPercent: sql.NullInt32{Int32: 50, Valid: true},
+		PriceFinalFormatted:  "$9.99",
+		PlatformWindows:      sql.NullBool{Bool: true, Valid: true},
+		PlatformMac:          sql.NullBool{Bool: false, Valid: true},
+		PlatformLinux:        sql.NullBool{Bool: true, Valid: true},
+		ReleaseDate:          "21 Nov, 2024",
+		ReleaseDateParsed:    sql.NullTime{Time: time.Date(2024, time.November, 21, 0, 0, 0, 0, time.UTC), Valid: true},
+		Categories:           []int32{1},
 	})
 	seedCommonGame(t, env, commonGameSeed{
 		AppID:             570,
@@ -186,6 +226,36 @@ func TestCommonGamesHappyPath(t *testing.T) {
 	}
 	if shared.ReleaseDate == nil || *shared.ReleaseDate != "21 Nov, 2024" {
 		t.Fatalf("releaseDate = %v, want 21 Nov, 2024", shared.ReleaseDate)
+	}
+	if shared.ShortDescription == nil || *shared.ShortDescription != "A tactical multiplayer shooter." {
+		t.Fatalf("shortDescription = %v", shared.ShortDescription)
+	}
+	if shared.Website == nil || *shared.Website != "https://www.counter-strike.net/" {
+		t.Fatalf("website = %v", shared.Website)
+	}
+	if shared.PriceCurrency == nil || *shared.PriceCurrency != "USD" {
+		t.Fatalf("priceCurrency = %v", shared.PriceCurrency)
+	}
+	if shared.PriceInitial == nil || *shared.PriceInitial != 1999 {
+		t.Fatalf("priceInitial = %v", shared.PriceInitial)
+	}
+	if shared.PriceFinal == nil || *shared.PriceFinal != 999 {
+		t.Fatalf("priceFinal = %v", shared.PriceFinal)
+	}
+	if shared.PriceDiscountPercent == nil || *shared.PriceDiscountPercent != 50 {
+		t.Fatalf("priceDiscountPercent = %v", shared.PriceDiscountPercent)
+	}
+	if shared.PriceFinalFormatted == nil || *shared.PriceFinalFormatted != "$9.99" {
+		t.Fatalf("priceFinalFormatted = %v", shared.PriceFinalFormatted)
+	}
+	if shared.PlatformWindows == nil || !*shared.PlatformWindows {
+		t.Fatalf("platformWindows = %v", shared.PlatformWindows)
+	}
+	if shared.PlatformMac == nil || *shared.PlatformMac {
+		t.Fatalf("platformMac = %v", shared.PlatformMac)
+	}
+	if shared.PlatformLinux == nil || !*shared.PlatformLinux {
+		t.Fatalf("platformLinux = %v", shared.PlatformLinux)
 	}
 	assertCommonGameCounts(t, shared, 2, 0, 2)
 	assertCommonGameCounts(t, games.Games[1], 0, 2, 2)

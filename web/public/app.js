@@ -104,7 +104,9 @@ const commonGamesResults = document.querySelector("#common-games-results");
 const commonGamesResultsCount = document.querySelector("#common-games-results-count");
 const commonGamesQueryUsers = document.querySelector("#common-games-query-users");
 const commonGamesResultsEmpty = document.querySelector("#common-games-results-empty");
-const commonGamesGameList = document.querySelector("#common-games-game-list");
+const commonGamesTableScroll = document.querySelector("#common-games-table-scroll");
+const commonGamesGameRows = document.querySelector("#common-games-game-rows");
+const commonGamesNote = document.querySelector("#common-games-note");
 
 const numberFormatter = new Intl.NumberFormat();
 
@@ -1830,9 +1832,11 @@ function renderCommonGamesResults() {
         games.length === 1 ? "game" : "games"
     }`;
     commonGamesResultsEmpty.hidden = games.length !== 0;
-    commonGamesGameList.replaceChildren(
-        ...games.map((game, index) =>
-            buildCommonGameCard(game, users.length, index),
+    commonGamesTableScroll.hidden = games.length === 0;
+    commonGamesNote.hidden = games.length === 0;
+    commonGamesGameRows.replaceChildren(
+        ...games.flatMap((game, index) =>
+            buildCommonGameRows(game, users.length, index),
         ),
     );
 }
@@ -1846,126 +1850,150 @@ function buildCommonGamesQueryUser(user) {
     return chip;
 }
 
-function buildCommonGameCard(game, userCount, index) {
-    const item = newElement("li", "game-card");
-    const header = newElement("div", "game-card__header");
+function buildCommonGameRows(game, userCount, index) {
+    const row = document.createElement("tr");
+    row.className = "app-row";
 
+    const nameCell = newElement("td", "app-cell");
+    const body = newElement("div", "app-cell__body");
     if (game.headerImage) {
-        const image = newElement("img", "game-card__image");
+        const image = newElement("img", "app-cell__image");
         image.src = game.headerImage;
         image.alt = "";
         image.loading = "lazy";
-        header.append(image);
+        body.append(image);
     }
 
-    const body = newElement("div", "game-card__body");
     const total = countValue(game.totalCommonUsers);
     const percent = commonGamesPercent(total, userCount);
-    const meta = newElement("p", "game-card__meta");
+    const meta = newElement("p", "app-cell__meta");
     meta.append(
-        newElement("span", "game-card__percent", `${percent}%`),
+        newElement("span", "app-cell__percent", `${percent}%`),
         document.createTextNode(
             ` · ${formatCount(total)} of ${formatCount(
                 userCount,
             )} users own or wishlist this game`,
         ),
     );
-    body.append(
-        newElement("p", "game-card__name", game.name ?? "Unknown app"),
+
+    const info = newElement("div", "app-cell__info");
+    info.append(
+        newElement("span", "app-cell__name", game.name ?? "Unknown app"),
         meta,
     );
+    body.append(info);
+    nameCell.append(body);
+
+    const storeCell = newElement("td", "app-store");
+    const priceLabel = appPriceLabel(game);
+    const storeLink = newElement("a", "app-store__link", priceLabel);
+    storeLink.href = `https://store.steampowered.com/app/${encodeURIComponent(game.appId)}/`;
+    storeLink.target = "_blank";
+    storeLink.rel = "noopener noreferrer";
+    storeLink.setAttribute(
+        "aria-label",
+        `View ${game.name ?? "app"} on Steam (${priceLabel})`,
+    );
+    storeCell.append(storeLink);
 
     const detailsID = `common-game-details-${game.appId ?? "unknown"}-${index}`;
-    const details = newElement("div", "game-card__details");
-    details.id = detailsID;
-    details.hidden = true;
-
-    const toggle = newElement(
-        "button",
-        "button--secondary game-card__toggle",
-        "Show details",
-    );
+    const toggle = newElement("button", "button--secondary app-expand");
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-controls", detailsID);
+    toggle.setAttribute(
+        "aria-label",
+        `Show details for ${game.name ?? "app"}`,
+    );
+
+    const chevron = newElement("span", "app-expand__chevron");
+    chevron.setAttribute("aria-hidden", "true");
+    toggle.append(chevron);
+
+    const expandCell = newElement("td", "app-expand-cell");
+    expandCell.append(toggle);
+
+    const detailsRow = document.createElement("tr");
+    detailsRow.className = "app-details-row";
+    detailsRow.hidden = true;
+
+    const detailsCell = newElement("td", "app-details-cell");
+    detailsCell.colSpan = 3;
+
+    const details = newElement("div", "app-details");
+    details.id = detailsID;
+    details.append(buildCommonGameDetails(game, userCount));
+    detailsCell.append(details);
+    detailsRow.append(detailsCell);
+
     toggle.addEventListener("click", () => {
         const expanded = toggle.getAttribute("aria-expanded") === "true";
         toggle.setAttribute("aria-expanded", String(!expanded));
-        toggle.textContent = expanded ? "Show details" : "Hide details";
-        details.hidden = expanded;
+        toggle.setAttribute(
+            "aria-label",
+            expanded
+                ? `Show details for ${game.name ?? "app"}`
+                : `Hide details for ${game.name ?? "app"}`,
+        );
+        detailsRow.hidden = expanded;
     });
 
-    header.append(body, toggle);
-    details.append(buildCommonGameDetails(game, userCount));
-    item.append(header, details);
+    row.append(nameCell, storeCell, expandCell);
 
-    return item;
+    return [row, detailsRow];
 }
 
 function buildCommonGameDetails(game, userCount) {
     const fragment = document.createDocumentFragment();
 
     if (game.headerImage) {
-        const image = newElement("img", "game-card__image game-card__image--large");
+        const image = newElement(
+            "img",
+            "app-cell__image app-cell__image--large",
+        );
         image.src = game.headerImage;
         image.alt = "";
         image.loading = "lazy";
         fragment.append(image);
     }
 
-    const rows = newElement("dl", "game-card__details-list");
+    if (
+        typeof game.shortDescription === "string" &&
+        game.shortDescription.trim() !== ""
+    ) {
+        fragment.append(
+            newElement(
+                "p",
+                "app-details__description",
+                game.shortDescription.trim(),
+            ),
+        );
+    }
+
+    const rows = newElement("dl", "details app-details__list");
     rows.append(
-        buildCommonGameDetail("Release date", game.releaseDate ?? "—"),
-        buildCommonGameDetail(
+        detailRow("Release date", appReleaseLabel(game)),
+        detailRow(
             "Owned",
             `${formatCount(game.ownedCount ?? 0)} (${commonGamesPercent(
                 game.ownedCount ?? 0,
                 userCount,
             )}%)`,
         ),
-        buildCommonGameDetail(
+        detailRow(
             "Wishlisted",
             `${formatCount(game.wishlistCount ?? 0)} (${commonGamesPercent(
                 game.wishlistCount ?? 0,
                 userCount,
             )}%)`,
         ),
-        buildCommonGameDetail(
-            "Owned or wishlisted",
-            `${formatCount(game.totalCommonUsers ?? 0)} (${commonGamesPercent(
-                game.totalCommonUsers ?? 0,
-                userCount,
-            )}%)`,
-        ),
-        buildCommonGameDetail("App ID", String(game.appId ?? "")),
+        detailRow("Price", appPriceDetail(game)),
+        detailRow("Platforms", appPlatformsLabel(game)),
+        buildAppWebsiteRow(game.website),
     );
     fragment.append(rows);
 
-    const store = newElement("p", "game-card__store");
-    const link = newElement("a", "", "Open on Steam");
-    link.href = `https://store.steampowered.com/app/${encodeURIComponent(
-        game.appId ?? "",
-    )}/`;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    store.append(link);
-    fragment.append(store);
-
-    fragment.append(
-        newElement(
-            "p",
-            "hint",
-            "A user who owns and wishlists the same game is counted once in the combined total, so owned and wishlist percentages can add up to more than 100%.",
-        ),
-    );
-
     return fragment;
-}
-
-function buildCommonGameDetail(label, value) {
-    const row = newElement("div", "game-card__detail");
-    row.append(newElement("dt", "", label), newElement("dd", "", value));
-    return row;
 }
 
 function commonGamesPercent(count, total) {
@@ -1986,7 +2014,9 @@ function clearCommonGamesResultsView() {
     commonGamesResultsCount.textContent = "";
     commonGamesQueryUsers.replaceChildren();
     commonGamesResultsEmpty.hidden = true;
-    commonGamesGameList.replaceChildren();
+    commonGamesTableScroll.hidden = true;
+    commonGamesGameRows.replaceChildren();
+    commonGamesNote.hidden = true;
 }
 
 function invalidateCommonGamesResults() {
