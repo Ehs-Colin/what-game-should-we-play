@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"math"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"uuid"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpx"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/logging"
 )
 
 type middleware func(http.Handler) http.Handler
@@ -73,10 +75,9 @@ func validateRequestOrigin(appOrigin string) middleware { //renderer *templates.
 					return
 				}
 			}
-			// TODO::Find a solution to respond with an error page
-			// if err := httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Forbidden", "This request did not come from the what-game-should-we-play app."); err != nil {
-			// 	http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			// }
+			if err := httpx.RespondWithErrorPage(responseWriter, http.StatusForbidden, "Forbidden", "This request did not come from the what-game-should-we-play app."); err != nil {
+				http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			}
 		})
 	}
 }
@@ -112,26 +113,37 @@ func cspNonce(next http.Handler) http.Handler {
 	})
 }
 
-//TODO :: Add recoverPanics
-// func recoverPanics(logger *logging.Logger, renderer *templates.Renderer) middleware {
-// 	return func(next http.Handler) http.Handler {
-// 		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-// 			defer func() {
-// 				if recovered := recover(); recovered != nil {
-// 					_ = logger.Event("unhandled_error", map[string]any{
-// 						"method":  request.Method,
-// 						"path":    request.URL.Path,
-// 						"message": fmt.Sprint(recovered),
-// 					})
-// 					if err := httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusInternalServerError, "Unhandled Error", fmt.Sprint(recovered)); err != nil {
-// 						http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-// 					}
-// 				}
-// 			}()
-// 			next.ServeHTTP(responseWriter, request)
-// 		})
-// 	}
-// }
+// recoverPanics turns a handler panic into a logged 500 error page. The panic
+// value is logged but never shown to the client.
+func recoverPanics(logger *logging.Logger) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+			defer func() {
+				recovered := recover()
+				if recovered == nil {
+					return
+				}
+				// http.ErrAbortHandler is the documented way for a handler to
+				// abort a response, so let the server handle it.
+				if recovered == http.ErrAbortHandler {
+					panic(recovered)
+				}
+				if logger != nil {
+					_ = logger.Event("unhandled_error", map[string]any{
+						"requestId": getRequestId(request.Context()).String(),
+						"method":    request.Method,
+						"path":      request.URL.Path,
+						"message":   fmt.Sprint(recovered),
+					})
+				}
+				if err := httpx.RespondWithErrorPage(responseWriter, http.StatusInternalServerError, "Unhandled Error", "The request failed. Try again."); err != nil {
+					http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				}
+			}()
+			next.ServeHTTP(responseWriter, request)
+		})
+	}
+}
 
 func LoadShedder(maxConcurrent int, retryAfterSeconds int) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -157,8 +169,8 @@ func LoadShedder(maxConcurrent int, retryAfterSeconds int) func(http.Handler) ht
 	}
 }
 
-// TODO :: Add SearchThrottle
-func SearchThrottle() func(http.Handler) http.Handler { //renderer *templates.Renderer
+// SearchThrottle limits search requests to protect the Steam API budget.
+func SearchThrottle() func(http.Handler) http.Handler {
 	return fixedWindowRateLimiter(rateLimitOptions{
 		window:  time.Second,
 		maximum: 5,
@@ -166,9 +178,9 @@ func SearchThrottle() func(http.Handler) http.Handler { //renderer *templates.Re
 			return "search"
 		},
 		onLimit: func(w http.ResponseWriter, r *http.Request, state rateLimitState) {
-			//if err := httpx.RespondWithErrorPage(w, renderer, http.StatusTooManyRequests, "Search Is Busy", "Try again shortly."); err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			//}
+			if err := httpx.RespondWithErrorPage(w, http.StatusTooManyRequests, "Search Is Busy", "Try again shortly."); err != nil {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			}
 		},
 	})
 }

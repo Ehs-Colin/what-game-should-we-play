@@ -36,10 +36,6 @@ type Application struct {
 }
 
 func New(database *sql.DB, logger *logging.Logger, options Options) (*Application, error) {
-	// renderer, err := templates.Load(options.TemplateDirectory)
-	// if err != nil {
-	// 	return nil, err
-	// }
 	publicRoot, err := os.OpenRoot(options.PublicDirectory)
 	if err != nil {
 		return nil, fmt.Errorf("open public directory: %w", err)
@@ -97,7 +93,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 		assignRequestId,
 		cspNonce,
 		securityHeaders,
-		//recoverPanics(logger, renderer),
+		recoverPanics(logger),
 	)
 
 	return &Application{Handler: handler, publicRoot: publicRoot}, nil
