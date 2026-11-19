@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/api"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpx"
@@ -48,9 +49,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 
 	apiStore := api.NewStore(database, options.SteamApiKey, options.SteamClient)
 	apiHandler := api.NewHandler(apiStore, options.Importer, logger)
-	//dynamicMux.HandleFunc("GET /api/steamuser/{id}", apiHandler.GetSteamUserById)
-	//dynamicMux.HandleFunc("GET /api/steamuser/{name}", apiHandler.GetSteamUserByName)
-	//dynamicMux.HandleFunc("GET /api/steamusers", apiHandler.GetSteamUsers)
+
 	dynamicMux.HandleFunc("GET /api/dashboard", apiHandler.GetDashboard)
 	dynamicMux.HandleFunc("POST /api/steamuser", apiHandler.InsertSteamUser)
 	dynamicMux.HandleFunc("GET /api/steamusers", apiHandler.GetSteamUserByName)
@@ -65,15 +64,21 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	// fall back to index.html so client-side routes survive a hard refresh.
 	dynamicMux.Handle("GET /", newSPAHandler(publicRoot))
 
-	// dynamicHandler := applyMiddleware(
-	// 	dynamicMux,
-	// 	LoadShedder(MaxInFlight, RetryAfterSeconds),
-	// 	fixedWindowRateLimiter(rateLimitSettings),
-	// 	validateRequestOrigin(options.AppOrigin, renderer),
-	// )
+	rateLimitSettings := rateLimitOptions{
+		window:  time.Minute,
+		maximum: 100,
+		key:     clientIPKeyWithTrustedProxies(options.TrustedProxyHops),
+	}
+	dynamicHandler := applyMiddleware(
+		dynamicMux,
+		LoadShedder(MaxInFlight, RetryAfterSeconds),
+		fixedWindowRateLimiter(rateLimitSettings),
+		validateRequestOrigin(options.AppOrigin),
+	)
+
 	mainMux := http.NewServeMux()
 	mainMux.HandleFunc("GET /health", func(responseWriter http.ResponseWriter, _ *http.Request) {
-		httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"ok": true, "app": "bearly-secure"})
+		httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"ok": true, "app": "what-game-should-we-play"})
 	})
 	// staticHandler := newStaticHandler(publicRoot)
 	// mainMux.Handle("GET /reset.css", staticHandler)
@@ -85,17 +90,17 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	// mainMux.Handle("GET /shipping-widget.js", staticHandler)
 	// mainMux.Handle("GET /product-photos/{filename}", staticHandler)
 	// mainMux.HandleFunc("POST /integrations/pawpal/webhook", pawPalHandler.Webhook)
-	mainMux.Handle("/", dynamicMux)
+	mainMux.Handle("/", dynamicHandler)
 
-	// handler := applyMiddleware(
-	// 	mainMux,
-	// 	assignRequestId,
-	// 	cspNonce,
-	// 	securityHeaders,
-	// 	recoverPanics(logger, renderer),
-	// )
+	handler := applyMiddleware(
+		mainMux,
+		assignRequestId,
+		cspNonce,
+		securityHeaders,
+		//recoverPanics(logger, renderer),
+	)
 
-	return &Application{Handler: mainMux, publicRoot: publicRoot}, nil
+	return &Application{Handler: handler, publicRoot: publicRoot}, nil
 }
 
 func newSPAHandler(publicRoot *os.Root) http.Handler {
