@@ -16,23 +16,35 @@ import (
 )
 
 const (
-	defaultPort                  = 3030
-	defaultDatabasePath          = ""
-	defaultDatabaseFilename      = "wgswp.sqlite"
-	defaultAppOrigin             = "http://localhost:5959"
-	activeEncryptionVersionEnv   = "DATA_ENCRYPTION_ACTIVE_VERSION"
-	encryptionKeyEnvPrefix       = "DATA_ENCRYPTION_KEY_"
-	defaultSteamApiTimeout       = 5
-	defaultSteamApiCacheInterval = 5
+	defaultPort                 = 3030
+	defaultDatabaseMaxOpenConns = 10
+	defaultAppOrigin            = "http://localhost:5959"
+	activeEncryptionVersionEnv  = "DATA_ENCRYPTION_ACTIVE_VERSION"
+	encryptionKeyEnvPrefix      = "DATA_ENCRYPTION_KEY_"
+	defaultSteamApiTimeout      = 5
+	defaultSteamRefreshInterval = 7 * 24 * 60 * 60 // 7 days, in seconds
 )
 
 type Config struct {
-	Port                  int
-	DatabasePath          string
-	AppOrigin             string
-	SteamApiKey           string
-	SteamApiTimeout       time.Duration
-	SteamApiCacheInterval time.Duration
+	Port                 int
+	DatabaseURL          string
+	DatabaseMaxOpenConns int
+	AppOrigin            string
+	// TrustedProxyHops is the number of reverse proxies between the client and
+	// this server. When greater than zero, rate limiting and login throttling
+	// use the client address from X-Forwarded-For instead of the proxy's peer
+	// address. Only safe when clients cannot reach the server directly.
+	TrustedProxyHops int
+	// DefaultAdminUsername and DefaultAdminPassword bootstrap the first account
+	// when the database has no accounts. They are ignored after that.
+	DefaultAdminUsername string
+	DefaultAdminPassword string
+	SteamApiKey          string
+	SteamApiTimeout      time.Duration
+	// SteamRefreshInterval controls how often a user's library and stored app
+	// details are re-imported. The per-URL Steam response cache controls whether an
+	// individual request is served from Postgres or fetched from Steam.
+	SteamRefreshInterval time.Duration
 	//ActiveEncryptionKeyVersion string
 	//EncryptionKeys             map[string][32]byte
 }
@@ -71,15 +83,28 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 		return Config{}, errors.New("PORT must be no greater than 65535")
 	}
 
-	databasePath := environment["DATABASE_URL"]
-	if databasePath == "" {
-		databasePath = filepath.Join(workingDirectory, "data", defaultDatabaseFilename)
+	databaseURL, err := requireEnvironmentVariable(environment, "DATABASE_URL")
+	if err != nil {
+		return Config{}, err
+	}
+	databaseMaxOpenConns, err := parseNonNegativeInteger(valueOrDefault(environment, "DATABASE_MAX_OPEN_CONNS", strconv.Itoa(defaultDatabaseMaxOpenConns)), "DATABASE_MAX_OPEN_CONNS")
+	if err != nil {
+		return Config{}, err
+	}
+	if databaseMaxOpenConns == 0 {
+		return Config{}, errors.New("DATABASE_MAX_OPEN_CONNS must be greater than 0")
 	}
 
 	appOrigin, err := parseOrigin(valueOrDefault(environment, "APP_ORIGIN", defaultAppOrigin))
 	if err != nil {
 		return Config{}, err
 	}
+	trustedProxyHops, err := parseNonNegativeInteger(valueOrDefault(environment, "TRUSTED_PROXY_HOPS", "0"), "TRUSTED_PROXY_HOPS")
+	if err != nil {
+		return Config{}, err
+	}
+	defaultAdminUsername := valueOrDefault(environment, "DEFAULT_ADMIN_USERNAME", "")
+	defaultAdminPassword := valueOrDefault(environment, "DEFAULT_ADMIN_PASSWORD", "")
 	// activeEncryptionKeyVersion, encryptionKeys, err := parseEncryptionKeys(environment)
 	// if err != nil {
 	// 	return Config{}, err
@@ -92,18 +117,22 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 	if err != nil {
 		return Config{}, err
 	}
-	steamApiCacheInterval, err := parseNonNegativeInteger(valueOrDefault(environment, "STEAM_API_CACHE_INTERVAL", strconv.Itoa(int(defaultSteamApiCacheInterval))), "STEAM_API_CACHE_INTERVAL")
+	steamRefreshInterval, err := parseNonNegativeInteger(valueOrDefault(environment, "STEAM_REFRESH_INTERVAL", strconv.Itoa(defaultSteamRefreshInterval)), "STEAM_REFRESH_INTERVAL")
 	if err != nil {
 		return Config{}, err
 	}
 
 	return Config{
-		Port:                  port,
-		DatabasePath:          databasePath,
-		AppOrigin:             appOrigin,
-		SteamApiKey:           steamApiKey,
-		SteamApiTimeout:       time.Duration(int64(steamApiTimeout) * int64(time.Second)),
-		SteamApiCacheInterval: time.Duration(int64(steamApiCacheInterval) * int64(time.Second)),
+		Port:                 port,
+		DatabaseURL:          databaseURL,
+		DatabaseMaxOpenConns: databaseMaxOpenConns,
+		AppOrigin:            appOrigin,
+		TrustedProxyHops:     trustedProxyHops,
+		DefaultAdminUsername: defaultAdminUsername,
+		DefaultAdminPassword: defaultAdminPassword,
+		SteamApiKey:          steamApiKey,
+		SteamApiTimeout:      time.Duration(int64(steamApiTimeout) * int64(time.Second)),
+		SteamRefreshInterval: time.Duration(int64(steamRefreshInterval) * int64(time.Second)),
 		//ActiveEncryptionKeyVersion: activeEncryptionKeyVersion,
 		//EncryptionKeys:             encryptionKeys,
 	}, nil

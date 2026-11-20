@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#171a21" />
+        <title>Steam Decision Engine</title>
+        <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body>
+        <header class="site-header">
+            <a class="brand" href="/" data-route="/">Steam Decision Engine</a>
+            <nav id="site-nav" class="site-nav" aria-label="Main">
+                <a href="/" data-route="/">Dashboard</a>
+                <a href="/import" data-route="/import">Import Steam User</a>
+                <a href="/search" data-route="/search">Search Users</a>
+                <a href="/user" data-route="/user">View User</a>
+                <a href="/common-games" data-route="/common-games"
+                    >Find Common Games</a
+                >
+            </nav>
+            <div class="auth-status">
+                <span id="auth-username"></span>
+                <button
+                    id="logout-button"
+                    type="button"
+                    class="button--secondary"
+                    hidden
+                >
+                    Sign out
+                </button>
+            </div>
+        </header>
+
+        <main class="page">
+            <section id="view-login" data-view="/login" hidden>
+                <div class="card auth-card">
+                    <header class="card__header">
+                        <p class="eyebrow">Sign in</p>
+                        <h1 tabindex="-1">Sign in to Steam Decision Engine</h1>
+                    </header>
+
+                    <form id="login-form" class="lookup auth-form" novalidate>
+                        <label for="login-username">Username</label>
+                        <input
+                            id="login-username"
+                            name="username"
+                            type="text"
+                            autocomplete="username"
+                            spellcheck="false"
+                            required
+                        />
+
+                        <label for="login-password">Password</label>
+                        <input
+                            id="login-password"
+                            name="password"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                        />
+
+                        <button id="login-button" type="submit">Sign in</button>
+                    </form>
+
+                    <p
+                        id="login-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                </div>
+            </section>
+
+            <section
+                id="view-create-account"
+                data-view="/create-account"
+                hidden
+            >
+                <div class="card auth-card">
+                    <header class="card__header">
+                        <p class="eyebrow">First-time setup</p>
+                        <h1 tabindex="-1">Create your real account</h1>
+                        <p class="lede">
+                            The default account is temporary. Creating a real
+                            account disables the default account immediately.
+                        </p>
+                    </header>
+
+                    <form
+                        id="create-account-form"
+                        class="lookup auth-form"
+                        novalidate
+                    >
+                        <label for="create-username">New username</label>
+                        <input
+                            id="create-username"
+                            name="username"
+                            type="text"
+                            autocomplete="username"
+                            spellcheck="false"
+                            required
+                        />
+
+                        <label for="create-password">New password</label>
+                        <input
+                            id="create-password"
+                            name="password"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                        />
+
+                        <label for="create-password-confirm"
+                            >Confirm new password</label
+                        >
+                        <input
+                            id="create-password-confirm"
+                            name="confirmPassword"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                        />
+
+                        <label for="create-default-password"
+                            >Current default password</label
+                        >
+                        <input
+                            id="create-default-password"
+                            name="defaultPassword"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                        />
+
+                        <button id="create-account-button" type="submit">
+                            Create account
+                        </button>
+                    </form>
+
+                    <p
+                        id="create-account-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                </div>
+            </section>
+
+            <section id="view-dashboard" data-view="/" hidden>
+                <div class="card">
+                    <header class="card__header">
+                        <p class="eyebrow">Dashboard</p>
+                        <h1 tabindex="-1">Imported Steam data at a glance</h1>
+                        <p class="lede">
+                            Counts come from the database and refresh while this
+                            page is open.
+                        </p>
+                    </header>
+
+                    <p
+                        id="dashboard-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <div
+                        id="dashboard-metrics"
+                        class="metric-grid"
+                        aria-busy="true"
+                    >
+                        <article class="metric">
+                            <p class="metric__label">Steam users</p>
+                            <p id="metric-users" class="metric__value">—</p>
+                        </article>
+                        <article class="metric">
+                            <p class="metric__label">Apps imported</p>
+                            <p id="metric-apps" class="metric__value">—</p>
+                        </article>
+                        <article class="metric">
+                            <p class="metric__label">Running import jobs</p>
+                            <p id="metric-running" class="metric__value">—</p>
+                        </article>
+                        <article class="metric">
+                            <p class="metric__label">Queued import jobs</p>
+                            <p id="metric-queued" class="metric__value">—</p>
+                        </article>
+                    </div>
+
+                    <p id="dashboard-updated" class="hint"></p>
+                </div>
+            </section>
+
+            <section id="view-import" data-view="/import" hidden>
+                <div class="card">
+                    <header class="card__header">
+                        <p class="eyebrow">Steam Decision Engine</p>
+                        <h1 tabindex="-1">Import Steam User</h1>
+                        <p class="lede">
+                            Look up a Steam user by their vanity name to get
+                            started.
+                        </p>
+                    </header>
+
+                    <form id="lookup-form" class="lookup" novalidate>
+                        <label for="steam-name">Steam name</label>
+                        <div class="lookup__row">
+                            <input
+                                id="steam-name"
+                                name="steamName"
+                                type="text"
+                                placeholder="e.g. gaben"
+                                autocomplete="off"
+                                spellcheck="false"
+                                required
+                            />
+                            <button id="lookup-button" type="submit">
+                                Look up
+                            </button>
+                        </div>
+                        <p class="hint">
+                            Enter the part after steamcommunity.com/id/
+                        </p>
+                    </form>
+
+                    <p
+                        id="status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <section
+                        id="result"
+                        class="panel"
+                        hidden
+                        aria-labelledby="result-title"
+                    >
+                        <h2 id="result-title" class="section-title">
+                            Steam user
+                        </h2>
+                        <dl class="details">
+                            <div class="details__row">
+                                <dt>Name</dt>
+                                <dd id="result-name"></dd>
+                            </div>
+                            <div class="details__row">
+                                <dt>Steam ID</dt>
+                                <dd><output id="steam-id"></output></dd>
+                            </div>
+                            <div class="details__row">
+                                <dt>Source</dt>
+                                <dd id="result-source"></dd>
+                            </div>
+                        </dl>
+                    </section>
+
+                    <section
+                        id="job"
+                        class="panel"
+                        hidden
+                        aria-labelledby="job-title"
+                    >
+                        <h2 id="job-title" class="section-title">
+                            Library import
+                        </h2>
+                        <p id="job-status" class="job__status"></p>
+                        <dl class="details">
+                            <div class="details__row">
+                                <dt>Progress</dt>
+                                <dd id="job-progress"></dd>
+                            </div>
+                            <div class="details__row">
+                                <dt>Skipped</dt>
+                                <dd id="job-skipped"></dd>
+                            </div>
+                            <div class="details__row">
+                                <dt>Failed</dt>
+                                <dd id="job-failed"></dd>
+                            </div>
+                        </dl>
+                        <p id="job-error" class="error" hidden></p>
+                    </section>
+                </div>
+            </section>
+
+            <section id="view-search" data-view="/search" hidden>
+                <div class="card">
+                    <header class="card__header">
+                        <p class="eyebrow">Search Users</p>
+                        <h1 tabindex="-1">Find imported Steam users</h1>
+                        <p class="lede">
+                            Search by any part of a stored Steam name, then open
+                            a user to view their apps.
+                        </p>
+                    </header>
+
+                    <form id="search-form" class="lookup" novalidate>
+                        <label for="search-name">Steam name</label>
+                        <div class="lookup__row">
+                            <input
+                                id="search-name"
+                                name="name"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                placeholder="e.g. gaben"
+                                required
+                            />
+                            <button id="search-button" type="submit">
+                                Search
+                            </button>
+                        </div>
+                    </form>
+
+                    <section
+                        id="search-controls"
+                        class="controls"
+                        aria-label="Sort and filter results"
+                        hidden
+                    >
+                        <label>
+                            Sort by
+                            <select id="search-sort">
+                                <option value="name">Name</option>
+                                <option value="updated">Last updated</option>
+                                <option value="owned">Owned apps</option>
+                                <option value="wishlist">Wishlist apps</option>
+                            </select>
+                        </label>
+                        <label>
+                            Direction
+                            <select id="search-direction">
+                                <option value="asc">Ascending</option>
+                                <option value="desc">Descending</option>
+                            </select>
+                        </label>
+                        <label>
+                            Wishlist
+                            <select id="search-wishlist">
+                                <option value="all">Any</option>
+                                <option value="public">Public</option>
+                                <option value="private">Private</option>
+                            </select>
+                        </label>
+                        <button
+                            id="search-reset"
+                            type="button"
+                            class="button--secondary"
+                        >
+                            Reset
+                        </button>
+                    </section>
+
+                    <p
+                        id="search-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                    <p id="search-count" class="hint" hidden></p>
+
+                    <ul id="search-results" class="result-list" hidden></ul>
+                </div>
+            </section>
+
+            <section id="view-user" data-view="/user" hidden>
+                <div class="card">
+                    <header class="card__header">
+                        <p class="eyebrow">View User</p>
+                        <h1 tabindex="-1">View a Steam user</h1>
+                        <p class="lede">
+                            Enter an exact Steam name to see their imported
+                            library.
+                        </p>
+                    </header>
+
+                    <form id="user-form" class="lookup" novalidate>
+                        <label for="user-name">Steam name</label>
+                        <div class="lookup__row">
+                            <input
+                                id="user-name"
+                                name="name"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                placeholder="e.g. gaben"
+                                required
+                            />
+                            <button id="user-submit" type="submit">
+                                View user
+                            </button>
+                        </div>
+                        <p class="hint">
+                            Exact name match, ignoring case. Use Search Users
+                            for partial searches.
+                        </p>
+                    </form>
+
+                    <p
+                        id="user-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <section
+                        id="user-summary"
+                        class="panel"
+                        hidden
+                        aria-labelledby="user-summary-title"
+                    >
+                        <div class="section-heading">
+                            <h2 id="user-summary-title" class="section-title">
+                                Steam user
+                            </h2>
+                            <span
+                                id="user-status-badge"
+                                class="badge"
+                                data-status="out-of-date"
+                                >Out-of-Date</span
+                            >
+                        </div>
+                        <dl id="user-summary-details" class="details"></dl>
+                        <p id="user-summary-notice" class="hint" hidden></p>
+                    </section>
+
+                    <section
+                        id="user-apps"
+                        class="panel"
+                        hidden
+                        aria-labelledby="user-apps-title"
+                    >
+                        <h2 id="user-apps-title" class="section-title">Apps</h2>
+
+                        <div class="tabs" role="tablist" aria-label="App lists">
+                            <button
+                                id="tab-owned"
+                                class="tab"
+                                type="button"
+                                role="tab"
+                                aria-selected="true"
+                                aria-controls="user-app-panel"
+                            >
+                                Owned (<span id="owned-tab-count">0</span>)
+                            </button>
+                            <button
+                                id="tab-wishlist"
+                                class="tab"
+                                type="button"
+                                role="tab"
+                                aria-selected="false"
+                                aria-controls="user-app-panel"
+                            >
+                                Wishlist (<span id="wishlist-tab-count">0</span
+                                >)
+                            </button>
+                        </div>
+
+                        <div
+                            id="user-app-panel"
+                            role="tabpanel"
+                            tabindex="0"
+                            aria-labelledby="tab-owned"
+                        >
+                            <div class="app-toolbar">
+                                <p id="user-list-count" class="hint"></p>
+                                <label>
+                                    Rows per page
+                                    <select id="user-page-size">
+                                        <option value="25">25</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div class="table-scroll">
+                                <table id="user-app-table" class="app-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">App</th>
+                                            <th scope="col">Price</th>
+                                            <th
+                                                scope="col"
+                                                class="app-expand-heading"
+                                                aria-label="Expand"
+                                            ></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="user-app-rows"></tbody>
+                                </table>
+                            </div>
+
+                            <nav
+                                id="user-pagination"
+                                class="pagination"
+                                aria-label="App pages"
+                            ></nav>
+                        </div>
+                    </section>
+                </div>
+            </section>
+
+            <section id="view-common-games" data-view="/common-games" hidden>
+                <div class="card">
+                    <header class="card__header">
+                        <p class="eyebrow">Find Common Games</p>
+                        <h1 tabindex="-1">
+                            Find games your group can play together
+                        </h1>
+                        <p class="lede">
+                            Pick at least two imported Steam users, then find
+                            multiplayer games they own or want.
+                        </p>
+                    </header>
+
+                    <form
+                        id="common-games-search-form"
+                        class="lookup"
+                        novalidate
+                    >
+                        <label for="common-games-search-name"
+                            >Search Steam users</label
+                        >
+                        <div class="lookup__row">
+                            <input
+                                id="common-games-search-name"
+                                name="name"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                placeholder="e.g. gaben"
+                                required
+                            />
+                            <button
+                                id="common-games-search-button"
+                                type="submit"
+                            >
+                                Search
+                            </button>
+                        </div>
+                        <p class="hint">
+                            Partial, case-insensitive match on stored Steam
+                            names.
+                        </p>
+                    </form>
+
+                    <p
+                        id="common-games-search-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <section
+                        id="common-games-search-results-panel"
+                        hidden
+                        aria-labelledby="common-games-search-results-title"
+                    >
+                        <h2
+                            id="common-games-search-results-title"
+                            class="section-title"
+                        >
+                            Search results
+                        </h2>
+                        <ul
+                            id="common-games-search-results"
+                            class="result-list"
+                        ></ul>
+                    </section>
+
+                    <section
+                        id="common-games-selected-panel"
+                        class="panel"
+                        aria-labelledby="common-games-selected-title"
+                    >
+                        <div class="section-heading">
+                            <h2
+                                id="common-games-selected-title"
+                                class="section-title"
+                            >
+                                Selected users
+                            </h2>
+                            <span
+                                id="common-games-selected-count"
+                                class="badge"
+                            >
+                                0 / 25
+                            </span>
+                        </div>
+                        <p id="common-games-selected-empty" class="hint">
+                            No users selected yet. Search above and add at least
+                            two.
+                        </p>
+                        <ul
+                            id="common-games-selected-list"
+                            class="selected-users"
+                        ></ul>
+                        <p
+                            id="common-games-selected-hint"
+                            class="hint"
+                            hidden
+                        ></p>
+                    </section>
+
+                    <div class="common-games-controls">
+                        <label for="common-games-limit">
+                            Maximum games
+                            <input
+                                id="common-games-limit"
+                                type="number"
+                                min="1"
+                                max="100"
+                                step="1"
+                                value="10"
+                                inputmode="numeric"
+                            />
+                        </label>
+                        <button id="common-games-submit" type="button" disabled>
+                            Find Common Games
+                        </button>
+                    </div>
+                    <p class="hint">
+                        Choose between 1 and 100 games. The API default is 10.
+                    </p>
+                    <p id="common-games-submit-hint" class="hint">
+                        Select at least 2 users to continue.
+                    </p>
+
+                    <p
+                        id="common-games-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <section
+                        id="common-games-results"
+                        hidden
+                        aria-labelledby="common-games-results-title"
+                        aria-busy="false"
+                    >
+                        <div class="section-heading">
+                            <h2
+                                id="common-games-results-title"
+                                class="section-title"
+                            >
+                                Common games
+                            </h2>
+                            <span
+                                id="common-games-results-count"
+                                class="badge"
+                            ></span>
+                        </div>
+                        <div
+                            id="common-games-query-users"
+                            class="query-users"
+                        ></div>
+                        <p id="common-games-results-empty" class="hint" hidden>
+                            No common multiplayer games found for these users.
+                        </p>
+                        <div
+                            id="common-games-table-scroll"
+                            class="table-scroll"
+                        >
+                            <table
+                                id="common-games-app-table"
+                                class="app-table"
+                            >
+                                <thead>
+                                    <tr>
+                                        <th scope="col">App</th>
+                                        <th scope="col">Price</th>
+                                        <th
+                                            scope="col"
+                                            class="app-expand-heading"
+                                            aria-label="Expand"
+                                        ></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="common-games-game-rows"></tbody>
+                            </table>
+                        </div>
+                        <p
+                            id="common-games-note"
+                            class="hint common-games-note"
+                        >
+                            A user who owns and wishlists the same game is
+                            counted once in the combined total, so owned and
+                            wishlist percentages can add up to more than 100%.
+                        </p>
+                    </section>
+                </div>
+            </section>
+        </main>
+
+        <script src="/app.js" defer></script>
+    </body>
+</html>

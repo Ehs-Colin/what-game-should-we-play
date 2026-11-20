@@ -11,7 +11,17 @@ import (
 )
 
 const addAppCategory = `-- name: AddAppCategory :exec
-INSERT INTO app_categories (app_id, category_id) VALUES ($1, $2)
+INSERT INTO app_categories (
+    app_id,
+    category_id,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
 ON CONFLICT DO NOTHING
 `
 
@@ -44,18 +54,23 @@ func (q *Queries) DeleteCategory(ctx context.Context, id int32) error {
 }
 
 const getCategory = `-- name: GetCategory :one
-SELECT id, description FROM categories WHERE id = $1 LIMIT 1
+SELECT id, description, created_at, updated_at FROM categories WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetCategory(ctx context.Context, id int32) (Category, error) {
 	row := q.db.QueryRowContext(ctx, getCategory, id)
 	var i Category
-	err := row.Scan(&i.ID, &i.Description)
+	err := row.Scan(
+		&i.ID,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
 const listCategories = `-- name: ListCategories :many
-SELECT id, description FROM categories ORDER BY description
+SELECT id, description, created_at, updated_at FROM categories ORDER BY description
 `
 
 func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
@@ -67,7 +82,12 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 	var items []Category
 	for rows.Next() {
 		var i Category
-		if err := rows.Scan(&i.ID, &i.Description); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -82,7 +102,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 }
 
 const listCategoriesForApp = `-- name: ListCategoriesForApp :many
-SELECT c.id, c.description FROM categories c
+SELECT c.id, c.description, c.created_at, c.updated_at FROM categories c
 JOIN app_categories ac ON ac.category_id = c.id
 WHERE ac.app_id = $1
 ORDER BY c.description
@@ -97,7 +117,12 @@ func (q *Queries) ListCategoriesForApp(ctx context.Context, appID int32) ([]Cate
 	var items []Category
 	for rows.Next() {
 		var i Category
-		if err := rows.Scan(&i.ID, &i.Description); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -126,9 +151,22 @@ func (q *Queries) RemoveAppCategory(ctx context.Context, arg RemoveAppCategoryPa
 }
 
 const upsertCategory = `-- name: UpsertCategory :one
-INSERT INTO categories (id, description) VALUES ($1, $2)
-ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description
-RETURNING id, description
+INSERT INTO categories (
+    id,
+    description,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO UPDATE SET
+    description = EXCLUDED.description,
+    updated_at = NOW(),
+    created_at = NOW()
+RETURNING id, description, created_at, updated_at
 `
 
 type UpsertCategoryParams struct {
@@ -139,6 +177,11 @@ type UpsertCategoryParams struct {
 func (q *Queries) UpsertCategory(ctx context.Context, arg UpsertCategoryParams) (Category, error) {
 	row := q.db.QueryRowContext(ctx, upsertCategory, arg.ID, arg.Description)
 	var i Category
-	err := row.Scan(&i.ID, &i.Description)
+	err := row.Scan(
+		&i.ID,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }

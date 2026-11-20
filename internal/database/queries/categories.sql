@@ -5,15 +5,38 @@ SELECT * FROM categories WHERE id = $1 LIMIT 1;
 SELECT * FROM categories ORDER BY description;
 
 -- name: UpsertCategory :one
-INSERT INTO categories (id, description) VALUES ($1, $2)
-ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description
+INSERT INTO categories (
+    id,
+    description,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO UPDATE SET
+    description = EXCLUDED.description,
+    updated_at = NOW(),
+    created_at = NOW()
 RETURNING *;
 
 -- name: DeleteCategory :exec
 DELETE FROM categories WHERE id = $1;
 
 -- name: AddAppCategory :exec
-INSERT INTO app_categories (app_id, category_id) VALUES ($1, $2)
+INSERT INTO app_categories (
+    app_id,
+    category_id,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
 ON CONFLICT DO NOTHING;
 
 -- name: RemoveAppCategory :exec

@@ -6,6 +6,7 @@ package dbgen
 
 import (
 	"database/sql"
+	"time"
 )
 
 type App struct {
@@ -25,41 +26,122 @@ type App struct {
 	PlatformMac          sql.NullBool   `json:"platform_mac"`
 	PlatformLinux        sql.NullBool   `json:"platform_linux"`
 	ReleaseDate          sql.NullString `json:"release_date"`
+	ReleaseDateParsed    sql.NullTime   `json:"release_date_parsed"`
 	ReleaseComingSoon    sql.NullBool   `json:"release_coming_soon"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
 }
 
 type AppAlias struct {
-	AppID   int32 `json:"app_id"`
-	AliasID int32 `json:"alias_id"`
+	AppID     int32     `json:"app_id"`
+	AliasID   int32     `json:"alias_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type AppCategory struct {
-	AppID      int32 `json:"app_id"`
-	CategoryID int32 `json:"category_id"`
+	AppID      int32     `json:"app_id"`
+	CategoryID int32     `json:"category_id"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type AppGenre struct {
-	AppID   int32 `json:"app_id"`
-	GenreID int32 `json:"genre_id"`
+	AppID     int32     `json:"app_id"`
+	GenreID   int32     `json:"genre_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type AppSession struct {
+	TokenHash  []byte    `json:"token_hash"`
+	UserID     int64     `json:"user_id"`
+	CsrfToken  string    `json:"csrf_token"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+type AppUser struct {
+	ID           int64        `json:"id"`
+	Username     string       `json:"username"`
+	PasswordHash string       `json:"password_hash"`
+	IsDefault    bool         `json:"is_default"`
+	DisabledAt   sql.NullTime `json:"disabled_at"`
+	LastLoginAt  sql.NullTime `json:"last_login_at"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
 }
 
 type Category struct {
 	ID          int32          `json:"id"`
 	Description sql.NullString `json:"description"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 type Genre struct {
 	ID          int32          `json:"id"`
 	Description sql.NullString `json:"description"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+}
+
+type ImportJob struct {
+	ID                    int64          `json:"id"`
+	SteamID               int64          `json:"steam_id"`
+	Status                string         `json:"status"`
+	TotalApps             int32          `json:"total_apps"`
+	ProcessedApps         int32          `json:"processed_apps"`
+	SkippedApps           int32          `json:"skipped_apps"`
+	FailedApps            int32          `json:"failed_apps"`
+	WishlistTotalApps     int32          `json:"wishlist_total_apps"`
+	WishlistProcessedApps int32          `json:"wishlist_processed_apps"`
+	WishlistSkippedApps   int32          `json:"wishlist_skipped_apps"`
+	WishlistFailedApps    int32          `json:"wishlist_failed_apps"`
+	Error                 sql.NullString `json:"error"`
+	CreatedAt             time.Time      `json:"created_at"`
+	StartedAt             sql.NullTime   `json:"started_at"`
+	FinishedAt            sql.NullTime   `json:"finished_at"`
+}
+
+type SteamApiCache struct {
+	CacheKey     string    `json:"cache_key"`
+	ResponseBody []byte    `json:"response_body"`
+	FetchedAt    time.Time `json:"fetched_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	CallCount    int32     `json:"call_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type SteamApiCacheCall struct {
+	ID        int64     `json:"id"`
+	CacheKey  string    `json:"cache_key"`
+	FetchedAt time.Time `json:"fetched_at"`
 }
 
 type SteamUser struct {
-	ID      int32  `json:"id"`
-	SteamID int64  `json:"steam_id"`
-	Name    string `json:"name"`
+	SteamID         int64     `json:"steam_id"`
+	Name            string    `json:"name"`
+	WishlistPrivate bool      `json:"wishlist_private"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type SteamUserApp struct {
-	SteamID int64 `json:"steam_id"`
-	AppID   int32 `json:"app_id"`
+	SteamID   int64     `json:"steam_id"`
+	AppID     int32     `json:"app_id"`
+	Removed   bool      `json:"removed"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type SteamUserWishlist struct {
+	SteamID   int64        `json:"steam_id"`
+	AppID     int32        `json:"app_id"`
+	DateAdded sql.NullTime `json:"date_added"`
+	Removed   bool         `json:"removed"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }

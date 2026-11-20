@@ -11,7 +11,17 @@ import (
 )
 
 const addAppGenre = `-- name: AddAppGenre :exec
-INSERT INTO app_genres (app_id, genre_id) VALUES ($1, $2)
+INSERT INTO app_genres (
+    app_id,
+    genre_id,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
 ON CONFLICT DO NOTHING
 `
 
@@ -44,18 +54,23 @@ func (q *Queries) DeleteGenre(ctx context.Context, id int32) error {
 }
 
 const getGenre = `-- name: GetGenre :one
-SELECT id, description FROM genres WHERE id = $1 LIMIT 1
+SELECT id, description, created_at, updated_at FROM genres WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetGenre(ctx context.Context, id int32) (Genre, error) {
 	row := q.db.QueryRowContext(ctx, getGenre, id)
 	var i Genre
-	err := row.Scan(&i.ID, &i.Description)
+	err := row.Scan(
+		&i.ID,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
 const listGenres = `-- name: ListGenres :many
-SELECT id, description FROM genres ORDER BY description
+SELECT id, description, created_at, updated_at FROM genres ORDER BY description
 `
 
 func (q *Queries) ListGenres(ctx context.Context) ([]Genre, error) {
@@ -67,7 +82,12 @@ func (q *Queries) ListGenres(ctx context.Context) ([]Genre, error) {
 	var items []Genre
 	for rows.Next() {
 		var i Genre
-		if err := rows.Scan(&i.ID, &i.Description); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -82,7 +102,7 @@ func (q *Queries) ListGenres(ctx context.Context) ([]Genre, error) {
 }
 
 const listGenresForApp = `-- name: ListGenresForApp :many
-SELECT g.id, g.description FROM genres g
+SELECT g.id, g.description, g.created_at, g.updated_at FROM genres g
 JOIN app_genres ag ON ag.genre_id = g.id
 WHERE ag.app_id = $1
 ORDER BY g.description
@@ -97,7 +117,12 @@ func (q *Queries) ListGenresForApp(ctx context.Context, appID int32) ([]Genre, e
 	var items []Genre
 	for rows.Next() {
 		var i Genre
-		if err := rows.Scan(&i.ID, &i.Description); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -126,9 +151,22 @@ func (q *Queries) RemoveAppGenre(ctx context.Context, arg RemoveAppGenreParams) 
 }
 
 const upsertGenre = `-- name: UpsertGenre :one
-INSERT INTO genres (id, description) VALUES ($1, $2)
-ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description
-RETURNING id, description
+INSERT INTO genres (
+    id,
+    description,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO UPDATE SET
+    description = EXCLUDED.description,
+    updated_at = NOW(),
+    created_at = NOW()
+RETURNING id, description, created_at, updated_at
 `
 
 type UpsertGenreParams struct {
@@ -139,6 +177,11 @@ type UpsertGenreParams struct {
 func (q *Queries) UpsertGenre(ctx context.Context, arg UpsertGenreParams) (Genre, error) {
 	row := q.db.QueryRowContext(ctx, upsertGenre, arg.ID, arg.Description)
 	var i Genre
-	err := row.Scan(&i.ID, &i.Description)
+	err := row.Scan(
+		&i.ID,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }

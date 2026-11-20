@@ -12,9 +12,13 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/time/rate"
+
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/auth"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/config"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpserver"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/importer"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/logging"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/steamapi"
 )
@@ -37,9 +41,7 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	steamClient := steamapi.NewClient(appConfig.SteamApiTimeout, appConfig.SteamApiCacheInterval, appConfig.SteamApiKey)
-
-	databaseConnection, err := database.Open(ctx, appConfig.DatabasePath)
+	databaseConnection, err := database.Open(ctx, appConfig.DatabaseURL, appConfig.DatabaseMaxOpenConns)
 	if err != nil {
 		return err
 	}
@@ -52,12 +54,48 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer appLogger.Close()
+
+	authManager := auth.NewManager(databaseConnection, appLogger)
+	if err := authManager.EnsureDefaultUser(
+		ctx,
+		appConfig.DefaultAdminUsername,
+		appConfig.DefaultAdminPassword,
+	); err != nil {
+		return fmt.Errorf("bootstrap default account: %w", err)
+	}
+	if err := authManager.PruneExpiredSessions(ctx); err != nil {
+		_ = appLogger.Event("auth_session_prune_failed", map[string]any{"error": err.Error()})
+	}
+
+	steamCache := steamapi.NewPostgresCache(databaseConnection, appLogger)
+	if err := steamCache.Prune(ctx, time.Now()); err != nil {
+		_ = appLogger.Event("steam_cache_prune_failed", map[string]any{"error": err.Error()})
+	}
+	steamLimiter := rate.NewLimiter(rate.Every(steamapi.DefaultStoreInterval), 1)
+	steamClient := steamapi.NewClient(
+		appConfig.SteamApiTimeout,
+		appConfig.SteamApiKey,
+		steamCache,
+		steamLimiter,
+	)
+
+	// The importer's context is independent of ctx so that it outlives the
+	// signal; it's stopped explicitly after the HTTP server has shut down.
+	appImporter := importer.New(databaseConnection, &steamClient, appLogger, appConfig.SteamRefreshInterval)
+	if err := appImporter.Start(context.Background()); err != nil {
+		return fmt.Errorf("start importer: %w", err)
+	}
+	defer shutdownImporter(appImporter)
+
 	application, err := httpserver.New(databaseConnection, appLogger, httpserver.Options{
-		AppOrigin:       appConfig.AppOrigin,
-		PublicDirectory: filepath.Join(workingDirectory, "web", "public"),
-		SteamApiKey:     appConfig.SteamApiKey,
-		SteamClient:     &steamClient,
-		//TrustedProxyHops: appConfig.TrustedProxyHops,
+		AppOrigin:        appConfig.AppOrigin,
+		PublicDirectory:  filepath.Join(workingDirectory, "web", "public"),
+		SteamApiKey:      appConfig.SteamApiKey,
+		SteamClient:      &steamClient,
+		Importer:         appImporter,
+		Auth:             authManager,
+		Sessions:         authManager,
+		TrustedProxyHops: appConfig.TrustedProxyHops,
 	})
 	if err != nil {
 		return err
@@ -70,7 +108,8 @@ func run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return shutdownServer(applicationServer)
+		serverErr := shutdownServer(applicationServer)
+		return errors.Join(serverErr, shutdownImporter(appImporter))
 	case err := <-serverErrors:
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
@@ -84,6 +123,16 @@ func serve(server *http.Server, message string, serverErrors chan<- error) {
 		fmt.Println(message)
 		serverErrors <- server.ListenAndServe()
 	}()
+}
+
+// shutdownImporter is safe to call more than once.
+func shutdownImporter(appImporter *importer.Importer) error {
+	shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := appImporter.Shutdown(shutdownContext); err != nil {
+		return fmt.Errorf("shut down importer: %w", err)
+	}
+	return nil
 }
 
 func shutdownServer(server *http.Server) error {

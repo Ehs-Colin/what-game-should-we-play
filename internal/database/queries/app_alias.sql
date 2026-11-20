@@ -5,8 +5,19 @@ SELECT * FROM app_alias WHERE alias_id = $1 LIMIT 1;
 SELECT * FROM app_alias ORDER BY app_id, alias_id;
 
 -- name: UpsertAppAlias :one
-INSERT INTO app_alias (alias_id, app_id) VALUES ($1, $2)
-ON CONFLICT (alias_id) DO UPDATE SET app_id = EXCLUDED.app_id
+INSERT INTO app_alias (
+    alias_id,
+    app_id,
+    created_at,
+    updated_at
+) VALUES
+    ($1,
+    $2,
+    NOW(),
+    NOW())
+ON CONFLICT (alias_id) DO UPDATE SET
+    app_id = EXCLUDED.app_id,
+    updated_at = NOW()
 RETURNING *;
 
 -- name: DeleteAppAlias :exec

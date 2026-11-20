@@ -1,3 +1,6 @@
 .env*
 .cmds*
-data/wgswp.sqlite
+opencode.jsonc
+.opencode*
+data/*.log
+data/testenv/

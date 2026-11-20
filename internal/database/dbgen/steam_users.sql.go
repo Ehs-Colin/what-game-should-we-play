@@ -7,10 +7,24 @@ package dbgen
 
 import (
 	"context"
+	"database/sql"
+	"time"
+
+	"github.com/lib/pq"
 )
 
 const createSteamUser = `-- name: CreateSteamUser :one
-INSERT INTO steam_users (steam_id, name) VALUES ($1, $2) RETURNING id, steam_id, name
+INSERT INTO steam_users (
+    steam_id,
+    name,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+) RETURNING steam_id, name, wishlist_private, created_at, updated_at
 `
 
 type CreateSteamUserParams struct {
@@ -21,7 +35,13 @@ type CreateSteamUserParams struct {
 func (q *Queries) CreateSteamUser(ctx context.Context, arg CreateSteamUserParams) (SteamUser, error) {
 	row := q.db.QueryRowContext(ctx, createSteamUser, arg.SteamID, arg.Name)
 	var i SteamUser
-	err := row.Scan(&i.ID, &i.SteamID, &i.Name)
+	err := row.Scan(
+		&i.SteamID,
+		&i.Name,
+		&i.WishlistPrivate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
@@ -35,18 +55,187 @@ func (q *Queries) DeleteSteamUser(ctx context.Context, steamID int64) error {
 }
 
 const getSteamUser = `-- name: GetSteamUser :one
-SELECT id, steam_id, name FROM steam_users WHERE steam_id = $1 LIMIT 1
+SELECT steam_id, name, wishlist_private, created_at, updated_at FROM steam_users WHERE steam_id = $1 LIMIT 1
 `
 
 func (q *Queries) GetSteamUser(ctx context.Context, steamID int64) (SteamUser, error) {
 	row := q.db.QueryRowContext(ctx, getSteamUser, steamID)
 	var i SteamUser
-	err := row.Scan(&i.ID, &i.SteamID, &i.Name)
+	err := row.Scan(
+		&i.SteamID,
+		&i.Name,
+		&i.WishlistPrivate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
+const getSteamUserByName = `-- name: GetSteamUserByName :one
+SELECT steam_id, name, wishlist_private, created_at, updated_at FROM steam_users
+WHERE lower(name) = lower($1)
+ORDER BY updated_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetSteamUserByName(ctx context.Context, name string) (SteamUser, error) {
+	row := q.db.QueryRowContext(ctx, getSteamUserByName, name)
+	var i SteamUser
+	err := row.Scan(
+		&i.SteamID,
+		&i.Name,
+		&i.WishlistPrivate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listImportedSteamUsers = `-- name: ListImportedSteamUsers :many
+SELECT
+    su.steam_id,
+    su.name,
+    EXISTS (
+        SELECT 1
+        FROM import_jobs ij
+        WHERE ij.steam_id = su.steam_id
+          AND ij.status = 'succeeded'
+    ) AS has_succeeded_import
+FROM steam_users su
+WHERE su.steam_id = ANY($1::bigint[])
+ORDER BY su.steam_id
+`
+
+type ListImportedSteamUsersRow struct {
+	SteamID            int64  `json:"steam_id"`
+	Name               string `json:"name"`
+	HasSucceededImport bool   `json:"has_succeeded_import"`
+}
+
+func (q *Queries) ListImportedSteamUsers(ctx context.Context, steamIds []int64) ([]ListImportedSteamUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listImportedSteamUsers, pq.Array(steamIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListImportedSteamUsersRow
+	for rows.Next() {
+		var i ListImportedSteamUsersRow
+		if err := rows.Scan(&i.SteamID, &i.Name, &i.HasSucceededImport); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchSteamUsers = `-- name: SearchSteamUsers :many
+SELECT
+    su.steam_id,
+    su.name,
+    su.wishlist_private,
+    su.created_at,
+    su.updated_at,
+    (
+        SELECT COUNT(DISTINCT aa.app_id)
+        FROM steam_user_apps sua
+        JOIN app_alias aa ON aa.alias_id = sua.app_id
+        WHERE sua.steam_id = su.steam_id
+          AND sua.removed = FALSE
+    ) AS owned_app_count,
+    (
+        SELECT COUNT(DISTINCT aa.app_id)
+        FROM steam_user_wishlist suw
+        JOIN app_alias aa ON aa.alias_id = suw.app_id
+        WHERE suw.steam_id = su.steam_id
+          AND suw.removed = FALSE
+    ) AS wishlist_app_count,
+    latest.status AS latest_import_status,
+    latest.finished_at AS latest_import_finished_at,
+    EXISTS (
+        SELECT 1
+        FROM import_jobs active
+        WHERE active.steam_id = su.steam_id
+          AND active.status IN ('queued', 'running')
+    ) AS has_active_job,
+    EXISTS (
+        SELECT 1
+        FROM import_jobs succeeded
+        WHERE succeeded.steam_id = su.steam_id
+          AND succeeded.status = 'succeeded'
+    ) AS has_succeeded_import
+FROM steam_users su
+LEFT JOIN import_jobs latest ON latest.id = (
+    SELECT id
+    FROM import_jobs
+    WHERE steam_id = su.steam_id
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+)
+WHERE strpos(lower(su.name), lower($1)) > 0
+ORDER BY su.name, su.steam_id
+`
+
+type SearchSteamUsersRow struct {
+	SteamID                int64          `json:"steam_id"`
+	Name                   string         `json:"name"`
+	WishlistPrivate        bool           `json:"wishlist_private"`
+	CreatedAt              time.Time      `json:"created_at"`
+	UpdatedAt              time.Time      `json:"updated_at"`
+	OwnedAppCount          int64          `json:"owned_app_count"`
+	WishlistAppCount       int64          `json:"wishlist_app_count"`
+	LatestImportStatus     sql.NullString `json:"latest_import_status"`
+	LatestImportFinishedAt sql.NullTime   `json:"latest_import_finished_at"`
+	HasActiveJob           bool           `json:"has_active_job"`
+	HasSucceededImport     bool           `json:"has_succeeded_import"`
+}
+
+func (q *Queries) SearchSteamUsers(ctx context.Context, name string) ([]SearchSteamUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchSteamUsers, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchSteamUsersRow
+	for rows.Next() {
+		var i SearchSteamUsersRow
+		if err := rows.Scan(
+			&i.SteamID,
+			&i.Name,
+			&i.WishlistPrivate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OwnedAppCount,
+			&i.WishlistAppCount,
+			&i.LatestImportStatus,
+			&i.LatestImportFinishedAt,
+			&i.HasActiveJob,
+			&i.HasSucceededImport,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateSteamUser = `-- name: UpdateSteamUser :one
-UPDATE steam_users SET name = $2 WHERE steam_id = $1 RETURNING id, steam_id, name
+UPDATE steam_users SET
+    name = $2,
+    updated_at = NOW()
+WHERE steam_id = $1 RETURNING steam_id, name, wishlist_private, created_at, updated_at
 `
 
 type UpdateSteamUserParams struct {
@@ -57,12 +246,48 @@ type UpdateSteamUserParams struct {
 func (q *Queries) UpdateSteamUser(ctx context.Context, arg UpdateSteamUserParams) (SteamUser, error) {
 	row := q.db.QueryRowContext(ctx, updateSteamUser, arg.SteamID, arg.Name)
 	var i SteamUser
-	err := row.Scan(&i.ID, &i.SteamID, &i.Name)
+	err := row.Scan(
+		&i.SteamID,
+		&i.Name,
+		&i.WishlistPrivate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
+const updateSteamUserWishlistPrivate = `-- name: UpdateSteamUserWishlistPrivate :exec
+UPDATE steam_users SET
+    wishlist_private = $1,
+    updated_at = NOW()
+WHERE steam_id = $2
+`
+
+type UpdateSteamUserWishlistPrivateParams struct {
+	WishlistPrivate bool  `json:"wishlist_private"`
+	SteamID         int64 `json:"steam_id"`
+}
+
+func (q *Queries) UpdateSteamUserWishlistPrivate(ctx context.Context, arg UpdateSteamUserWishlistPrivateParams) error {
+	_, err := q.db.ExecContext(ctx, updateSteamUserWishlistPrivate, arg.WishlistPrivate, arg.SteamID)
+	return err
+}
+
 const upsertSteamUser = `-- name: UpsertSteamUser :one
-INSERT INTO steam_users (steam_id, name) VALUES ($1, $2) ON CONFLICT (steam_id) DO UPDATE SET name = $2 RETURNING id, steam_id, name
+INSERT INTO steam_users (
+    steam_id,
+    name,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+) ON CONFLICT (steam_id) DO UPDATE SET
+    name = $2,
+    updated_at = NOW()
+RETURNING steam_id, name, wishlist_private, created_at, updated_at
 `
 
 type UpsertSteamUserParams struct {
@@ -73,6 +298,12 @@ type UpsertSteamUserParams struct {
 func (q *Queries) UpsertSteamUser(ctx context.Context, arg UpsertSteamUserParams) (SteamUser, error) {
 	row := q.db.QueryRowContext(ctx, upsertSteamUser, arg.SteamID, arg.Name)
 	var i SteamUser
-	err := row.Scan(&i.ID, &i.SteamID, &i.Name)
+	err := row.Scan(
+		&i.SteamID,
+		&i.Name,
+		&i.WishlistPrivate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }

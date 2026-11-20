@@ -5,15 +5,38 @@ SELECT * FROM genres WHERE id = $1 LIMIT 1;
 SELECT * FROM genres ORDER BY description;
 
 -- name: UpsertGenre :one
-INSERT INTO genres (id, description) VALUES ($1, $2)
-ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description
+INSERT INTO genres (
+    id,
+    description,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO UPDATE SET
+    description = EXCLUDED.description,
+    updated_at = NOW(),
+    created_at = NOW()
 RETURNING *;
 
 -- name: DeleteGenre :exec
 DELETE FROM genres WHERE id = $1;
 
 -- name: AddAppGenre :exec
-INSERT INTO app_genres (app_id, genre_id) VALUES ($1, $2)
+INSERT INTO app_genres (
+    app_id,
+    genre_id,
+    updated_at,
+    created_at
+) VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW()
+)
 ON CONFLICT DO NOTHING;
 
 -- name: RemoveAppGenre :exec
