@@ -53,6 +53,26 @@ type AppGenre struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type AppSession struct {
+	TokenHash  []byte    `json:"token_hash"`
+	UserID     int64     `json:"user_id"`
+	CsrfToken  string    `json:"csrf_token"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+type AppUser struct {
+	ID           int64        `json:"id"`
+	Username     string       `json:"username"`
+	PasswordHash string       `json:"password_hash"`
+	IsDefault    bool         `json:"is_default"`
+	DisabledAt   sql.NullTime `json:"disabled_at"`
+	LastLoginAt  sql.NullTime `json:"last_login_at"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+}
+
 type Category struct {
 	ID          int32          `json:"id"`
 	Description sql.NullString `json:"description"`

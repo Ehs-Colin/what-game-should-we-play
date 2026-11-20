@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/auth"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbgen"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbtest"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/importer"
@@ -29,6 +30,32 @@ type fakeResolver struct {
 	ids   map[string]int64
 	err   error
 	calls *int
+}
+
+// stubAuthService lets handler tests build the API handler without a real auth
+// manager. The non-auth handlers under test never call it.
+type stubAuthService struct{}
+
+func (stubAuthService) Login(context.Context, string, string) (auth.LoginResult, error) {
+	return auth.LoginResult{}, auth.ErrInvalidCredentials
+}
+
+func (stubAuthService) Logout(context.Context, string) error {
+	return nil
+}
+
+func (stubAuthService) ResolveSession(context.Context, string) (auth.Principal, error) {
+	return auth.Principal{}, auth.ErrNoSession
+}
+
+func (stubAuthService) CreateRealAccount(
+	context.Context,
+	auth.Principal,
+	string,
+	string,
+	string,
+) (auth.LoginResult, error) {
+	return auth.LoginResult{}, auth.ErrAccountCreationRequired
 }
 
 func (f fakeResolver) ResolveVanityURL(_ context.Context, vanityUrl string) (*steamapi.VanityUrl, error) {
@@ -60,7 +87,7 @@ func newHandlerEnv(t *testing.T, resolver fakeResolver) *handlerEnv {
 	// The importer isn't started, so created jobs stay queued and Steam is
 	// never called.
 	jobImporter := importer.New(db, nil, nil, testRefreshInterval)
-	handler := NewHandler(NewStore(db, "", resolver), jobImporter, nil)
+	handler := NewHandler(NewStore(db, "", resolver), jobImporter, nil, stubAuthService{}, false, nil, nil)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/steamuser", handler.InsertSteamUser)

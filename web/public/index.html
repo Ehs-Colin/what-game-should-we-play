@@ -10,7 +10,7 @@
     <body>
         <header class="site-header">
             <a class="brand" href="/" data-route="/">Steam Decision Engine</a>
-            <nav class="site-nav" aria-label="Main">
+            <nav id="site-nav" class="site-nav" aria-label="Main">
                 <a href="/" data-route="/">Dashboard</a>
                 <a href="/import" data-route="/import">Import Steam User</a>
                 <a href="/search" data-route="/search">Search Users</a>
@@ -19,9 +19,134 @@
                     >Find Common Games</a
                 >
             </nav>
+            <div class="auth-status">
+                <span id="auth-username"></span>
+                <button
+                    id="logout-button"
+                    type="button"
+                    class="button--secondary"
+                    hidden
+                >
+                    Sign out
+                </button>
+            </div>
         </header>
 
         <main class="page">
+            <section id="view-login" data-view="/login" hidden>
+                <div class="card auth-card">
+                    <header class="card__header">
+                        <p class="eyebrow">Sign in</p>
+                        <h1 tabindex="-1">Sign in to Steam Decision Engine</h1>
+                    </header>
+
+                    <form id="login-form" class="lookup auth-form" novalidate>
+                        <label for="login-username">Username</label>
+                        <input
+                            id="login-username"
+                            name="username"
+                            type="text"
+                            autocomplete="username"
+                            spellcheck="false"
+                            required
+                        />
+
+                        <label for="login-password">Password</label>
+                        <input
+                            id="login-password"
+                            name="password"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                        />
+
+                        <button id="login-button" type="submit">Sign in</button>
+                    </form>
+
+                    <p
+                        id="login-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                </div>
+            </section>
+
+            <section
+                id="view-create-account"
+                data-view="/create-account"
+                hidden
+            >
+                <div class="card auth-card">
+                    <header class="card__header">
+                        <p class="eyebrow">First-time setup</p>
+                        <h1 tabindex="-1">Create your real account</h1>
+                        <p class="lede">
+                            The default account is temporary. Creating a real
+                            account disables the default account immediately.
+                        </p>
+                    </header>
+
+                    <form
+                        id="create-account-form"
+                        class="lookup auth-form"
+                        novalidate
+                    >
+                        <label for="create-username">New username</label>
+                        <input
+                            id="create-username"
+                            name="username"
+                            type="text"
+                            autocomplete="username"
+                            spellcheck="false"
+                            required
+                        />
+
+                        <label for="create-password">New password</label>
+                        <input
+                            id="create-password"
+                            name="password"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                        />
+
+                        <label for="create-password-confirm"
+                            >Confirm new password</label
+                        >
+                        <input
+                            id="create-password-confirm"
+                            name="confirmPassword"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                        />
+
+                        <label for="create-default-password"
+                            >Current default password</label
+                        >
+                        <input
+                            id="create-default-password"
+                            name="defaultPassword"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                        />
+
+                        <button id="create-account-button" type="submit">
+                            Create account
+                        </button>
+                    </form>
+
+                    <p
+                        id="create-account-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                </div>
+            </section>
+
             <section id="view-dashboard" data-view="/" hidden>
                 <div class="card">
                     <header class="card__header">

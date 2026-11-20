@@ -28,6 +28,8 @@ type Options struct {
 	SteamApiKey      string
 	SteamClient      *steamapi.Client
 	Importer         *importer.Importer
+	Auth             api.AuthService
+	Sessions         SessionResolver
 }
 
 type Application struct {
@@ -44,7 +46,21 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	dynamicMux := http.NewServeMux()
 
 	apiStore := api.NewStore(database, options.SteamApiKey, options.SteamClient)
-	apiHandler := api.NewHandler(apiStore, options.Importer, logger)
+	loginLimiter := api.NewLoginThrottle()
+	apiHandler := api.NewHandler(
+		apiStore,
+		options.Importer,
+		logger,
+		options.Auth,
+		strings.HasPrefix(options.AppOrigin, "https://"),
+		loginLimiter,
+		httpx.ClientIPKeyWithTrustedProxies(options.TrustedProxyHops),
+	)
+
+	dynamicMux.HandleFunc("POST /api/auth/login", apiHandler.Login)
+	dynamicMux.HandleFunc("POST /api/auth/logout", apiHandler.Logout)
+	dynamicMux.HandleFunc("GET /api/auth/session", apiHandler.Session)
+	dynamicMux.HandleFunc("POST /api/auth/account", apiHandler.CreateAccount)
 
 	dynamicMux.HandleFunc("GET /api/dashboard", apiHandler.GetDashboard)
 	dynamicMux.HandleFunc("POST /api/steamuser", apiHandler.InsertSteamUser)
@@ -63,13 +79,14 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	rateLimitSettings := rateLimitOptions{
 		window:  time.Minute,
 		maximum: 100,
-		key:     clientIPKeyWithTrustedProxies(options.TrustedProxyHops),
+		key:     httpx.ClientIPKeyWithTrustedProxies(options.TrustedProxyHops),
 	}
 	dynamicHandler := applyMiddleware(
 		dynamicMux,
 		LoadShedder(MaxInFlight, RetryAfterSeconds),
 		fixedWindowRateLimiter(rateLimitSettings),
 		validateRequestOrigin(options.AppOrigin),
+		requireAuth(options.Sessions, logger),
 	)
 
 	mainMux := http.NewServeMux()

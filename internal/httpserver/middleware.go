@@ -6,12 +6,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math"
-	"net"
 	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 	"uuid"
@@ -218,7 +216,7 @@ func newFixedWindowLimiter(options rateLimitOptions) *fixedWindowLimiter {
 		options.now = time.Now
 	}
 	if options.key == nil {
-		options.key = clientIPKey
+		options.key = httpx.ClientIPKey
 	}
 	return &fixedWindowLimiter{
 		options:     options,
@@ -309,32 +307,6 @@ func setRateLimitHeaders(responseWriter http.ResponseWriter, state rateLimitStat
 	responseWriter.Header().Set("RateLimit-Limit", strconv.Itoa(state.limit))
 	responseWriter.Header().Set("RateLimit-Remaining", strconv.Itoa(state.remaining))
 	responseWriter.Header().Set("RateLimit-Reset", strconv.FormatInt(state.resetAt.Unix()+boolToInt64(state.resetAt.Nanosecond() > 0), 10))
-}
-
-func clientIPKey(request *http.Request) string {
-	host, _, err := net.SplitHostPort(request.RemoteAddr)
-	if err == nil && host != "" {
-		return host
-	}
-	if request.RemoteAddr != "" {
-		return request.RemoteAddr
-	}
-	return "unknown"
-}
-
-func clientIPKeyWithTrustedProxies(trustedProxyHops int) func(*http.Request) string {
-	return func(request *http.Request) string {
-		if trustedProxyHops > 0 {
-			forwardedAddresses := strings.Split(request.Header.Get("X-Forwarded-For"), ",")
-			selectedIndex := len(forwardedAddresses) - trustedProxyHops
-			if selectedIndex >= 0 && selectedIndex < len(forwardedAddresses) {
-				if selectedAddress := strings.TrimSpace(forwardedAddresses[selectedIndex]); selectedAddress != "" {
-					return selectedAddress
-				}
-			}
-		}
-		return clientIPKey(request)
-	}
 }
 
 func boolToInt64(value bool) int64 {

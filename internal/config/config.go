@@ -30,6 +30,10 @@ type Config struct {
 	DatabaseURL          string
 	DatabaseMaxOpenConns int
 	AppOrigin            string
+	// DefaultAdminUsername and DefaultAdminPassword bootstrap the first account
+	// when the database has no accounts. They are ignored after that.
+	DefaultAdminUsername string
+	DefaultAdminPassword string
 	SteamApiKey          string
 	SteamApiTimeout      time.Duration
 	// SteamRefreshInterval controls how often a user's library and stored app
@@ -90,6 +94,8 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 	if err != nil {
 		return Config{}, err
 	}
+	defaultAdminUsername := valueOrDefault(environment, "DEFAULT_ADMIN_USERNAME", "")
+	defaultAdminPassword := valueOrDefault(environment, "DEFAULT_ADMIN_PASSWORD", "")
 	// activeEncryptionKeyVersion, encryptionKeys, err := parseEncryptionKeys(environment)
 	// if err != nil {
 	// 	return Config{}, err
@@ -112,6 +118,8 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 		DatabaseURL:          databaseURL,
 		DatabaseMaxOpenConns: databaseMaxOpenConns,
 		AppOrigin:            appOrigin,
+		DefaultAdminUsername: defaultAdminUsername,
+		DefaultAdminPassword: defaultAdminPassword,
 		SteamApiKey:          steamApiKey,
 		SteamApiTimeout:      time.Duration(int64(steamApiTimeout) * int64(time.Second)),
 		SteamRefreshInterval: time.Duration(int64(steamRefreshInterval) * int64(time.Second)),

@@ -1,4 +1,37 @@
 -- +goose Up
+CREATE TABLE app_users (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    username VARCHAR(64) NOT NULL,
+    password_hash TEXT NOT NULL,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    disabled_at TIMESTAMPTZ,
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
+-- Usernames are unique without regard to case.
+CREATE UNIQUE INDEX app_users_username_lower ON app_users (lower(username));
+
+-- At most one real account. The default account is excluded so both rows can
+-- coexist while the real account is being created.
+CREATE UNIQUE INDEX app_users_single_real
+    ON app_users (is_default)
+    WHERE is_default = FALSE;
+
+CREATE TABLE app_sessions (
+    token_hash BYTEA PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    csrf_token TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_seen_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX app_sessions_user_id ON app_sessions (user_id);
+CREATE INDEX app_sessions_expires_at ON app_sessions (expires_at);
+
 CREATE TABLE steam_users (
 	steam_id BIGINT PRIMARY KEY,
 	name VARCHAR(255) NOT NULL,
@@ -150,6 +183,8 @@ CREATE INDEX import_jobs_steam_id_created_at
     ON import_jobs (steam_id, created_at DESC, id DESC);
 
 -- +goose Down
+DROP TABLE app_sessions;
+DROP TABLE app_users;
 DROP TABLE steam_api_cache_calls;
 DROP TABLE steam_api_cache;
 DROP TABLE import_jobs;

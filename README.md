@@ -18,6 +18,10 @@ POSTGRES_PASSWORD=change-me
 DATABASE_URL=postgres://wgswp:change-me@localhost:5432/wgswp?sslmode=disable
 # Optional, defaults to 10
 DATABASE_MAX_OPEN_CONNS=10
+
+# Used only when the database has no accounts yet
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_PASSWORD=change-this-before-first-login
 ```
 
 Start the database and the server:
@@ -30,6 +34,19 @@ go run ./cmd/server
 Migrations are applied automatically on startup. After editing files in
 `internal/database/queries` or `internal/database/migrations`, regenerate the
 query code with `sqlc generate`.
+
+## Signing in
+
+The application is protected by a local account. On first startup against an
+empty database, the server creates a default account from
+`DEFAULT_ADMIN_USERNAME` and `DEFAULT_ADMIN_PASSWORD`. If no accounts exist and
+either variable is missing, startup fails.
+
+Sign in with the default account, then create the real account when prompted.
+Creating it disables the default account, deletes its sessions, and signs you
+in as the real account. After that the environment variables are ignored;
+changing them does not reset the account. There is exactly one real account and
+no password recovery, so keep the real password safe.
 
 ## Tests
 

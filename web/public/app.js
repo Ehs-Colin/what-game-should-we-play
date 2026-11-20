@@ -16,6 +16,8 @@ const ROUTES = new Map([
     ["/search", "search"],
     ["/user", "user"],
     ["/common-games", "commonGames"],
+    ["/login", "login"],
+    ["/create-account", "createAccount"],
 ]);
 
 const ROUTE_TITLES = {
@@ -24,10 +26,37 @@ const ROUTE_TITLES = {
     search: "Search Users",
     user: "View User",
     commonGames: "Find Common Games",
+    login: "Sign in",
+    createAccount: "Create Account",
+};
+
+const authState = {
+    loaded: false,
+    authenticated: false,
+    user: null,
+    csrfToken: null,
+    mustCreateAccount: false,
 };
 
 const viewSections = document.querySelectorAll("[data-view]");
 const navLinks = document.querySelectorAll(".site-nav a[data-route]");
+const siteNav = document.querySelector("#site-nav");
+const authUsername = document.querySelector("#auth-username");
+const logoutButton = document.querySelector("#logout-button");
+
+const loginForm = document.querySelector("#login-form");
+const loginUsername = document.querySelector("#login-username");
+const loginPassword = document.querySelector("#login-password");
+const loginButton = document.querySelector("#login-button");
+const loginStatus = document.querySelector("#login-status");
+
+const createAccountForm = document.querySelector("#create-account-form");
+const createUsername = document.querySelector("#create-username");
+const createPassword = document.querySelector("#create-password");
+const createPasswordConfirm = document.querySelector("#create-password-confirm");
+const createDefaultPassword = document.querySelector("#create-default-password");
+const createAccountButton = document.querySelector("#create-account-button");
+const createAccountStatus = document.querySelector("#create-account-status");
 
 const form = document.querySelector("#lookup-form");
 const input = document.querySelector("#steam-name");
@@ -230,6 +259,20 @@ commonGamesLimit.addEventListener("input", () => {
     invalidateCommonGamesResults();
 });
 
+loginForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void login();
+});
+
+createAccountForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void createRealAccount();
+});
+
+logoutButton.addEventListener("click", () => {
+    void logout();
+});
+
 commonGamesSearchResults.addEventListener("click", (event) => {
     const target = event.target.closest("button[data-add-steam-id]");
     if (!target) {
@@ -274,7 +317,7 @@ async function search() {
     setStatus(`Looking up “${name}”…`);
 
     try {
-        const lookupResponse = await fetch(lookupURL(name), {
+        const lookupResponse = await apiFetch(lookupURL(name), {
             headers: { Accept: "application/json" },
             signal: controller.signal,
         });
@@ -298,7 +341,7 @@ async function search() {
 
         setStatus(`Not in the database. Resolving “${name}” with Steam…`);
 
-        const createResponse = await fetch("/api/steamuser", {
+        const createResponse = await apiFetch("/api/steamuser", {
             method: "POST",
             headers: {
                 Accept: "application/json",
@@ -372,7 +415,7 @@ async function pollOnce(token) {
     let shouldContinue = true;
 
     try {
-        const response = await fetch(jobURL(lastJob.id), {
+        const response = await apiFetch(jobURL(lastJob.id), {
             headers: { Accept: "application/json" },
             signal: controller.signal,
         });
@@ -574,6 +617,281 @@ function isAbort(error) {
     return error?.name === "AbortError";
 }
 
+async function apiFetch(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const method = (options.method || "GET").toUpperCase();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method) && authState.csrfToken) {
+        headers.set("X-CSRF-Token", authState.csrfToken);
+    }
+
+    const response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: "same-origin",
+    });
+
+    if (response.status === 401) {
+        clearAuthState();
+        authState.loaded = true;
+        const next = encodeURIComponent(location.pathname + location.search);
+        history.replaceState({}, "", `/login?next=${next}`);
+        updateAuthChrome();
+        renderRoute();
+        throw new Error("Authentication required.");
+    }
+
+    if (response.status === 403) {
+        const body = await response.clone().json().catch(() => null);
+        if (body?.error === "account creation required") {
+            history.replaceState({}, "", "/create-account");
+            updateAuthChrome();
+            renderRoute();
+            throw new Error(body.error);
+        }
+    }
+
+    return response;
+}
+
+async function refreshSession() {
+    try {
+        const response = await fetch("/api/auth/session", {
+            headers: { Accept: "application/json" },
+            credentials: "same-origin",
+        });
+        if (!response.ok) {
+            throw await readError(response);
+        }
+        applyAuthSession(await response.json());
+    } catch {
+        clearAuthState();
+    } finally {
+        authState.loaded = true;
+    }
+}
+
+function applyAuthSession(session) {
+    authState.authenticated = Boolean(session?.authenticated);
+    authState.user = session?.user ?? null;
+    authState.csrfToken = session?.csrfToken ?? null;
+    authState.mustCreateAccount = Boolean(session?.mustCreateAccount);
+}
+
+function applyLoginResult(result) {
+    authState.loaded = true;
+    authState.authenticated = true;
+    authState.user = result?.user ?? null;
+    authState.csrfToken = result?.csrfToken ?? null;
+    authState.mustCreateAccount = Boolean(result?.mustCreateAccount);
+}
+
+function clearAuthState() {
+    authState.authenticated = false;
+    authState.user = null;
+    authState.csrfToken = null;
+    authState.mustCreateAccount = false;
+}
+
+function updateAuthChrome() {
+    if (authState.authenticated && authState.user) {
+        authUsername.textContent = authState.mustCreateAccount
+            ? `${authState.user.username} · Setup required`
+            : authState.user.username;
+    } else {
+        authUsername.textContent = "";
+    }
+    logoutButton.hidden = !authState.authenticated;
+
+    const path = normalizePath(location.pathname);
+    siteNav.hidden = path === "/login" || path === "/create-account";
+}
+
+function authRedirectFor(routePath) {
+    if (!authState.authenticated) {
+        if (routePath === "/login") {
+            return null;
+        }
+        const next = location.pathname + location.search + location.hash;
+        return `/login?next=${encodeURIComponent(next)}`;
+    }
+    if (authState.mustCreateAccount) {
+        return routePath === "/create-account" ? null : "/create-account";
+    }
+    if (routePath === "/login" || routePath === "/create-account") {
+        return "/";
+    }
+    return null;
+}
+
+function nextRouteAfterLogin() {
+    const next = new URLSearchParams(location.search).get("next");
+    if (!next || !next.startsWith("/") || next.startsWith("//")) {
+        return "/";
+    }
+    return next;
+}
+
+function setLoginStatus(message, state) {
+    loginStatus.textContent = message;
+    if (state) {
+        loginStatus.dataset.state = state;
+    } else {
+        delete loginStatus.dataset.state;
+    }
+}
+
+function setLoginBusy(busy) {
+    loginUsername.disabled = busy;
+    loginPassword.disabled = busy;
+    loginButton.disabled = busy;
+}
+
+async function login() {
+    const username = loginUsername.value.trim();
+    const password = loginPassword.value;
+
+    if (!username || !password) {
+        setLoginStatus("Enter your username and password.", "error");
+        (username ? loginPassword : loginUsername).focus();
+        return;
+    }
+
+    const next = nextRouteAfterLogin();
+    setLoginBusy(true);
+    setLoginStatus("Signing in…");
+
+    try {
+        const response = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({ username, password }),
+        });
+
+        if (response.status === 401) {
+            setLoginStatus("Invalid username or password.", "error");
+            return;
+        }
+        if (response.status === 429) {
+            setLoginStatus("Too many attempts. Try again shortly.", "error");
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        applyLoginResult(body);
+        loginForm.reset();
+
+        const target = authState.mustCreateAccount ? "/create-account" : next;
+        history.replaceState({}, "", target);
+        updateAuthChrome();
+        renderRoute();
+    } catch (error) {
+        setLoginStatus(errorMessage(error), "error");
+    } finally {
+        setLoginBusy(false);
+    }
+}
+
+function setCreateAccountStatus(message, state) {
+    createAccountStatus.textContent = message;
+    if (state) {
+        createAccountStatus.dataset.state = state;
+    } else {
+        delete createAccountStatus.dataset.state;
+    }
+}
+
+function setCreateAccountBusy(busy) {
+    createUsername.disabled = busy;
+    createPassword.disabled = busy;
+    createPasswordConfirm.disabled = busy;
+    createDefaultPassword.disabled = busy;
+    createAccountButton.disabled = busy;
+}
+
+async function createRealAccount() {
+    const username = createUsername.value.trim();
+    const password = createPassword.value;
+    const confirmation = createPasswordConfirm.value;
+    const defaultPassword = createDefaultPassword.value;
+
+    if (!username || !password || !confirmation || !defaultPassword) {
+        setCreateAccountStatus("Fill in every field.", "error");
+        return;
+    }
+    if (password !== confirmation) {
+        setCreateAccountStatus(
+            "The new passwords do not match.",
+            "error",
+        );
+        createPasswordConfirm.focus();
+        return;
+    }
+
+    setCreateAccountBusy(true);
+    setCreateAccountStatus("Creating your account…");
+
+    try {
+        const response = await apiFetch("/api/auth/account", {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ defaultPassword, username, password }),
+        });
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        applyLoginResult(body);
+        createAccountForm.reset();
+        history.replaceState({}, "", "/");
+        updateAuthChrome();
+        renderRoute();
+    } catch (error) {
+        if (isAbort(error)) {
+            return;
+        }
+        setCreateAccountStatus(errorMessage(error), "error");
+    } finally {
+        setCreateAccountBusy(false);
+    }
+}
+
+async function logout() {
+    logoutButton.disabled = true;
+    try {
+        await apiFetch("/api/auth/logout", {
+            method: "POST",
+            headers: { Accept: "application/json" },
+        });
+    } catch {
+        // Clear local state even when the session was already gone.
+    } finally {
+        logoutButton.disabled = false;
+    }
+
+    clearAuthState();
+    authState.loaded = true;
+    history.replaceState({}, "", "/login");
+    updateAuthChrome();
+    renderRoute();
+}
+
+async function bootstrap() {
+    await refreshSession();
+    updateAuthChrome();
+    renderRoute();
+}
+
 async function performSearch() {
     const token = ++searchToken;
     searchController?.abort();
@@ -592,7 +910,7 @@ async function performSearch() {
     setSearchStatus(`Searching for “${name}”…`);
 
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/steamusers/search?name=${encodeURIComponent(name)}`,
             {
                 headers: { Accept: "application/json" },
@@ -993,7 +1311,7 @@ async function loadUser() {
     });
 
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/steamusers/by-name?${params.toString()}`,
             {
                 headers: { Accept: "application/json" },
@@ -1646,7 +1964,7 @@ async function loadCommonGamesUsersFromURL(steamIDs, submitted) {
     );
 
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/steamusers/by-ids?steamIds=${encodeURIComponent(
                 steamIDs.join(","),
             )}`,
@@ -1743,7 +2061,7 @@ async function performCommonGamesSearch() {
     setCommonGamesSearchStatus(`Searching for “${name}”…`);
 
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/steamusers/search?name=${encodeURIComponent(name)}`,
             {
                 headers: { Accept: "application/json" },
@@ -1997,7 +2315,7 @@ async function findCommonGames() {
     setCommonGamesStatus("Finding common games…");
 
     try {
-        const response = await fetch("/api/common-games", {
+        const response = await apiFetch("/api/common-games", {
             method: "POST",
             headers: {
                 Accept: "application/json",
@@ -2464,7 +2782,7 @@ async function loadDashboard() {
     dashboardController = controller;
 
     try {
-        const response = await fetch("/api/dashboard", {
+        const response = await apiFetch("/api/dashboard", {
             headers: { Accept: "application/json" },
             signal: controller.signal,
         });
@@ -2541,12 +2859,22 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
+function enterLogin() {
+    setLoginStatus("");
+}
+
+function enterCreateAccount() {
+    setCreateAccountStatus("");
+}
+
 const pageLifecycles = {
     dashboard: { enter: enterDashboard, leave: leaveDashboard },
     import: { enter: enterImport, leave: leaveImport },
     search: { leave: leaveSearch },
     user: { enter: enterUser, leave: leaveUser },
     commonGames: { enter: enterCommonGames, leave: leaveCommonGames },
+    login: { enter: enterLogin },
+    createAccount: { enter: enterCreateAccount },
 };
 
 function onRouteChange(previous, next) {
@@ -2561,11 +2889,24 @@ function onRouteChange(previous, next) {
 }
 
 function renderRoute() {
+    if (!authState.loaded) {
+        return;
+    }
+
     const path = normalizePath(location.pathname);
     const routePath = ROUTES.has(path) ? path : "/";
     if (!ROUTES.has(path)) {
         history.replaceState({}, "", "/");
     }
+
+    const redirect = authRedirectFor(routePath);
+    if (redirect !== null) {
+        history.replaceState({}, "", redirect);
+        renderRoute();
+        return;
+    }
+
+    updateAuthChrome();
 
     const route = ROUTES.get(routePath);
     const previous = currentRoute;
@@ -2643,4 +2984,4 @@ function handleRouteClick(event) {
 
 document.addEventListener("click", handleRouteClick);
 window.addEventListener("popstate", renderRoute);
-renderRoute();
+void bootstrap();
