@@ -15,6 +15,7 @@ fi
 set +a
 
 port=${TEST_ENV_PORT:-3999}
+app_origin=${TEST_ENV_APP_ORIGIN:-http://localhost:${port}}
 db_name=${TEST_ENV_DB_NAME:-wgswp_test}
 run_dir=${TEST_ENV_DIR:-${repo_root}/data/testenv}
 pid_file=${run_dir}/server.pid
@@ -86,7 +87,7 @@ launcher=()
 if command -v setsid >/dev/null 2>&1; then
   launcher=(setsid)
 fi
-DATABASE_URL="${db_url}" PORT="${port}" "${launcher[@]}" "${binary}" >"${log_file}" 2>&1 &
+DATABASE_URL="${db_url}" PORT="${port}" APP_ORIGIN="${app_origin}" "${launcher[@]}" "${binary}" >"${log_file}" 2>&1 &
 server_pid=$!
 echo "${server_pid}" >"${pid_file}"
 
@@ -97,7 +98,7 @@ for _ in $(seq 1 120); do
     rm -f "${pid_file}"
     fail "server exited during startup"
   fi
-  if curl -fsS -o /dev/null --max-time 1 "http://127.0.0.1:${port}/api/dashboard" 2>/dev/null; then
+  if curl -fsS -o /dev/null --max-time 1 "http://127.0.0.1:${port}/health" 2>/dev/null; then
     ready=1
     break
   fi
@@ -117,7 +118,7 @@ if ! psql "${db_url}" -v ON_ERROR_STOP=1 -q -f "${script_dir}/seed.sql"; then
 fi
 
 echo
-echo "Test environment ready: http://localhost:${port}"
+echo "Test environment ready: ${app_origin}"
 echo "  database: ${db_name}"
 echo "  log:      ${log_file}"
 echo "  stop:     cmd/test/stop.sh"

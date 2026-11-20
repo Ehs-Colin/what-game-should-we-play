@@ -22,13 +22,15 @@ and the log file path. Data lives in `data/testenv/` (gitignored).
 
 The database URL is derived from `GOOSE_DBSTRING` (falling back to
 `DATABASE_URL`) by replacing the database name, so the usual `.env` setup works
-unchanged.
+unchanged. The test server gets its own `APP_ORIGIN` for the port it listens on;
+the `APP_ORIGIN` in `.env` still applies to the normal development server.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TEST_ENV_PORT` | `3999` | HTTP port for the test server. |
+| `TEST_ENV_APP_ORIGIN` | `http://localhost:$TEST_ENV_PORT` | `APP_ORIGIN` passed to the test server. It must match the URL opened in the browser or POST requests such as login will be rejected. |
 | `TEST_ENV_DB_NAME` | `wgswp_test` | Database name to create and drop. |
 | `TEST_ENV_DIR` | `data/testenv` | PID, log, and built binary location. |
 | `TEST_ENV_BASE_DATABASE_URL` | `GOOSE_DBSTRING`, then `DATABASE_URL` | Admin connection used to create the test database. |
