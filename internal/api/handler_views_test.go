@@ -404,7 +404,7 @@ func TestSearchSteamUsersNoMatchesAndBadRequests(t *testing.T) {
 	if len(body.SteamUsers) != 0 {
 		t.Fatalf("users = %+v, want none", body.SteamUsers)
 	}
-	if !json.Valid([]byte(recorder.Body.String())) || body.SteamUsers == nil {
+	if !json.Valid(recorder.Body.Bytes()) || body.SteamUsers == nil {
 		t.Fatalf("empty result should be a JSON array: %s", recorder.Body.String())
 	}
 
@@ -667,7 +667,7 @@ func TestGetSteamUserViewDefaultsAndPagination(t *testing.T) {
 	const steamID = int64(1501)
 	seedSteamUser(t, env, steamID, "PageUser")
 
-	for index := 0; index < 30; index++ {
+	for index := range 30 {
 		appID := int32(2000 + index)
 		seedApp(t, env, appID, fmt.Sprintf("Game %02d", index+1))
 		seedAlias(t, env, appID, appID)
@@ -734,7 +734,7 @@ func TestGetSteamUserViewClampsPage(t *testing.T) {
 	env := newHandlerEnv(t, defaultResolver())
 	const steamID = int64(1601)
 	seedSteamUser(t, env, steamID, "ClampUser")
-	for index := 0; index < 30; index++ {
+	for index := range 30 {
 		appID := int32(4000 + index)
 		seedApp(t, env, appID, fmt.Sprintf("Clamp %02d", index+1))
 		seedAlias(t, env, appID, appID)

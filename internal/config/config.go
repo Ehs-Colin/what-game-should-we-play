@@ -30,6 +30,11 @@ type Config struct {
 	DatabaseURL          string
 	DatabaseMaxOpenConns int
 	AppOrigin            string
+	// TrustedProxyHops is the number of reverse proxies between the client and
+	// this server. When greater than zero, rate limiting and login throttling
+	// use the client address from X-Forwarded-For instead of the proxy's peer
+	// address. Only safe when clients cannot reach the server directly.
+	TrustedProxyHops int
 	// DefaultAdminUsername and DefaultAdminPassword bootstrap the first account
 	// when the database has no accounts. They are ignored after that.
 	DefaultAdminUsername string
@@ -94,6 +99,10 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 	if err != nil {
 		return Config{}, err
 	}
+	trustedProxyHops, err := parseNonNegativeInteger(valueOrDefault(environment, "TRUSTED_PROXY_HOPS", "0"), "TRUSTED_PROXY_HOPS")
+	if err != nil {
+		return Config{}, err
+	}
 	defaultAdminUsername := valueOrDefault(environment, "DEFAULT_ADMIN_USERNAME", "")
 	defaultAdminPassword := valueOrDefault(environment, "DEFAULT_ADMIN_PASSWORD", "")
 	// activeEncryptionKeyVersion, encryptionKeys, err := parseEncryptionKeys(environment)
@@ -118,6 +127,7 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 		DatabaseURL:          databaseURL,
 		DatabaseMaxOpenConns: databaseMaxOpenConns,
 		AppOrigin:            appOrigin,
+		TrustedProxyHops:     trustedProxyHops,
 		DefaultAdminUsername: defaultAdminUsername,
 		DefaultAdminPassword: defaultAdminPassword,
 		SteamApiKey:          steamApiKey,

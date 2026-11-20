@@ -88,14 +88,14 @@ func run(ctx context.Context) error {
 	defer shutdownImporter(appImporter)
 
 	application, err := httpserver.New(databaseConnection, appLogger, httpserver.Options{
-		AppOrigin:       appConfig.AppOrigin,
-		PublicDirectory: filepath.Join(workingDirectory, "web", "public"),
-		SteamApiKey:     appConfig.SteamApiKey,
-		SteamClient:     &steamClient,
-		Importer:        appImporter,
-		Auth:            authManager,
-		Sessions:        authManager,
-		//TrustedProxyHops: appConfig.TrustedProxyHops,
+		AppOrigin:        appConfig.AppOrigin,
+		PublicDirectory:  filepath.Join(workingDirectory, "web", "public"),
+		SteamApiKey:      appConfig.SteamApiKey,
+		SteamClient:      &steamClient,
+		Importer:         appImporter,
+		Auth:             authManager,
+		Sessions:         authManager,
+		TrustedProxyHops: appConfig.TrustedProxyHops,
 	})
 	if err != nil {
 		return err
