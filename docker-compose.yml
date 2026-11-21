@@ -1,4 +1,26 @@
 services:
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Secrets and app settings (STEAM_API_KEY, POSTGRES_*, DEFAULT_ADMIN_*,
+    # APP_ORIGIN, ...) come from .env and are never baked into the image.
+    env_file:
+      - .env
+    # Override DATABASE_URL so the container talks to the postgres service by
+    # its compose hostname instead of the localhost value used in local dev.
+    # Compose gives `environment` precedence over `env_file`.
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-wgswp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wgswp}?sslmode=disable
+      PORT: "3030"
+    ports:
+      - "${APP_PORT:-3030}:3030"
+    volumes:
+      # Persist the application log (data/wgswp.log) written by the server.
+      - app-data:/app/data
+
   postgres:
     image: postgres:18
     restart: unless-stopped
@@ -19,3 +41,4 @@ services:
 
 volumes:
   postgres-data:
+  app-data:

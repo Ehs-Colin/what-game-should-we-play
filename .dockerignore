@@ -1,0 +1,28 @@
+# Version control & editor/tooling (never needed in the image context)
+.git
+.gitignore
+.opencode/
+opencode.jsonc
+
+# Secrets and local config — supplied to the container via docker-compose
+# (env_file), never baked into the image. The config loader also tolerates the
+# .env file being absent.
+.env
+.env*
+
+# Docs & codegen config not needed to build or run
+docs/
+README.md
+sqlc.yaml
+
+# Local/test database harness — not part of the server build or runtime
+cmd/test/
+
+# Runtime-generated files (log output, scratch env) that must not leak into the
+# image or shadow the data volume
+data/
+*.log
+
+# Build artifacts
+wgswp
+*.out
