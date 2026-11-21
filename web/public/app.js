@@ -53,8 +53,12 @@ const loginStatus = document.querySelector("#login-status");
 const createAccountForm = document.querySelector("#create-account-form");
 const createUsername = document.querySelector("#create-username");
 const createPassword = document.querySelector("#create-password");
-const createPasswordConfirm = document.querySelector("#create-password-confirm");
-const createDefaultPassword = document.querySelector("#create-default-password");
+const createPasswordConfirm = document.querySelector(
+    "#create-password-confirm",
+);
+const createDefaultPassword = document.querySelector(
+    "#create-default-password",
+);
 const createAccountButton = document.querySelector("#create-account-button");
 const createAccountStatus = document.querySelector("#create-account-status");
 
@@ -114,27 +118,55 @@ const userPageSize = document.querySelector("#user-page-size");
 const userAppRows = document.querySelector("#user-app-rows");
 const userPagination = document.querySelector("#user-pagination");
 
-const commonGamesSearchForm = document.querySelector("#common-games-search-form");
-const commonGamesSearchInput = document.querySelector("#common-games-search-name");
-const commonGamesSearchButton = document.querySelector("#common-games-search-button");
-const commonGamesSearchStatus = document.querySelector("#common-games-search-status");
+const commonGamesSearchForm = document.querySelector(
+    "#common-games-search-form",
+);
+const commonGamesSearchInput = document.querySelector(
+    "#common-games-search-name",
+);
+const commonGamesSearchButton = document.querySelector(
+    "#common-games-search-button",
+);
+const commonGamesSearchStatus = document.querySelector(
+    "#common-games-search-status",
+);
 const commonGamesSearchResultsPanel = document.querySelector(
     "#common-games-search-results-panel",
 );
-const commonGamesSearchResults = document.querySelector("#common-games-search-results");
-const commonGamesSelectedCount = document.querySelector("#common-games-selected-count");
-const commonGamesSelectedEmpty = document.querySelector("#common-games-selected-empty");
-const commonGamesSelectedList = document.querySelector("#common-games-selected-list");
-const commonGamesSelectedHint = document.querySelector("#common-games-selected-hint");
+const commonGamesSearchResults = document.querySelector(
+    "#common-games-search-results",
+);
+const commonGamesSelectedCount = document.querySelector(
+    "#common-games-selected-count",
+);
+const commonGamesSelectedEmpty = document.querySelector(
+    "#common-games-selected-empty",
+);
+const commonGamesSelectedList = document.querySelector(
+    "#common-games-selected-list",
+);
+const commonGamesSelectedHint = document.querySelector(
+    "#common-games-selected-hint",
+);
 const commonGamesLimit = document.querySelector("#common-games-limit");
 const commonGamesSubmit = document.querySelector("#common-games-submit");
-const commonGamesSubmitHint = document.querySelector("#common-games-submit-hint");
+const commonGamesSubmitHint = document.querySelector(
+    "#common-games-submit-hint",
+);
 const commonGamesStatus = document.querySelector("#common-games-status");
 const commonGamesResults = document.querySelector("#common-games-results");
-const commonGamesResultsCount = document.querySelector("#common-games-results-count");
-const commonGamesQueryUsers = document.querySelector("#common-games-query-users");
-const commonGamesResultsEmpty = document.querySelector("#common-games-results-empty");
-const commonGamesTableScroll = document.querySelector("#common-games-table-scroll");
+const commonGamesResultsCount = document.querySelector(
+    "#common-games-results-count",
+);
+const commonGamesQueryUsers = document.querySelector(
+    "#common-games-query-users",
+);
+const commonGamesResultsEmpty = document.querySelector(
+    "#common-games-results-empty",
+);
+const commonGamesTableScroll = document.querySelector(
+    "#common-games-table-scroll",
+);
 const commonGamesGameRows = document.querySelector("#common-games-game-rows");
 const commonGamesNote = document.querySelector("#common-games-note");
 
@@ -208,7 +240,8 @@ searchForm.addEventListener("submit", (event) => {
 });
 
 searchSort.addEventListener("change", () => {
-    searchDirection.value = SEARCH_SORT_DEFAULT_DIRECTIONS[searchSort.value] ?? "asc";
+    searchDirection.value =
+        SEARCH_SORT_DEFAULT_DIRECTIONS[searchSort.value] ?? "asc";
     renderSearchPipeline();
 });
 searchDirection.addEventListener("change", renderSearchPipeline);
@@ -431,7 +464,10 @@ async function pollOnce(token) {
             }
             lastJob = currentJob;
             renderJob(currentJob);
-            if (currentJob.status === "succeeded" || currentJob.status === "failed") {
+            if (
+                currentJob.status === "succeeded" ||
+                currentJob.status === "failed"
+            ) {
                 shouldContinue = false;
             }
         } else if (response.status === 404) {
@@ -471,7 +507,10 @@ function stopPolling() {
 }
 
 function enterImport() {
-    if (lastJob && (lastJob.status === "queued" || lastJob.status === "running")) {
+    if (
+        lastJob &&
+        (lastJob.status === "queued" || lastJob.status === "running")
+    ) {
         void pollOnce(importToken);
     }
 }
@@ -538,7 +577,9 @@ function showSteamUser(steamUser, source) {
             ? ""
             : String(steamUser.steamId);
     resultSource.textContent =
-        source === "database" ? "Stored in the database" : "Resolved with Steam";
+        source === "database"
+            ? "Stored in the database"
+            : "Resolved with Steam";
     result.hidden = false;
 }
 
@@ -642,7 +683,10 @@ async function apiFetch(url, options = {}) {
     }
 
     if (response.status === 403) {
-        const body = await response.clone().json().catch(() => null);
+        const body = await response
+            .clone()
+            .json()
+            .catch(() => null);
         if (body?.error === "account creation required") {
             history.replaceState({}, "", "/create-account");
             updateAuthChrome();
@@ -827,10 +871,7 @@ async function createRealAccount() {
         return;
     }
     if (password !== confirmation) {
-        setCreateAccountStatus(
-            "The new passwords do not match.",
-            "error",
-        );
+        setCreateAccountStatus("The new passwords do not match.", "error");
         createPasswordConfirm.focus();
         return;
     }
@@ -1015,9 +1056,14 @@ function compareSearchField(left, right, field) {
         case "updated":
             return compareSearchDates(left, right);
         case "owned":
-            return countValue(left.ownedAppCount) - countValue(right.ownedAppCount);
+            return (
+                countValue(left.ownedAppCount) - countValue(right.ownedAppCount)
+            );
         case "wishlist":
-            return countValue(left.wishlistAppCount) - countValue(right.wishlistAppCount);
+            return (
+                countValue(left.wishlistAppCount) -
+                countValue(right.wishlistAppCount)
+            );
         case "name":
         default:
             return compareSearchNames(left, right);
@@ -1025,15 +1071,22 @@ function compareSearchField(left, right, field) {
 }
 
 function compareSearchNames(left, right) {
-    return String(left.name ?? "").localeCompare(String(right.name ?? ""), undefined, {
-        sensitivity: "base",
-    });
+    return String(left.name ?? "").localeCompare(
+        String(right.name ?? ""),
+        undefined,
+        {
+            sensitivity: "base",
+        },
+    );
 }
 
 function compareSearchDates(left, right) {
     const leftTime = Date.parse(left.updatedAt ?? "");
     const rightTime = Date.parse(right.updatedAt ?? "");
-    return (Number.isNaN(leftTime) ? 0 : leftTime) - (Number.isNaN(rightTime) ? 0 : rightTime);
+    return (
+        (Number.isNaN(leftTime) ? 0 : leftTime) -
+        (Number.isNaN(rightTime) ? 0 : rightTime)
+    );
 }
 
 function countValue(value) {
@@ -1081,7 +1134,10 @@ function buildSearchResultRows(user, index) {
     const body = newElement("div", "app-cell__body");
     const avatar = user.avatarMedium || user.avatarFull || user.avatar;
     if (avatar) {
-        const image = newElement("img", "app-cell__image app-cell__image--avatar");
+        const image = newElement(
+            "img",
+            "app-cell__image app-cell__image--avatar",
+        );
         image.src = avatar;
         image.alt = "";
         image.loading = "lazy";
@@ -1094,11 +1150,21 @@ function buildSearchResultRows(user, index) {
     nameLink.dataset.route = "/user";
     info.append(nameLink);
 
-    const wishlist = user.wishlistPrivate ? "Private" : "Public";
-    const counts = `Owned: ${formatCount(user.ownedAppCount)} / Wishlist: ${formatCount(
-        user.wishlistAppCount,
-    )} · ${wishlist} wishlist`;
-    info.append(newElement("p", "app-cell__meta", counts));
+    // Match View User's Wishlist privacy line: the privacy state is a badge,
+    // not plain text, so Public stays green and Private stays red.
+    const counts = newElement("p", "app-cell__meta");
+    counts.append(
+        document.createTextNode(
+            `Owned: ${formatCount(user.ownedAppCount)} / Wishlist: ${formatCount(
+                user.wishlistAppCount,
+            )} `,
+        ),
+        badge(
+            user.wishlistPrivate ? "Private" : "Public",
+            user.wishlistPrivate ? "private" : "public",
+        ),
+    );
+    info.append(counts);
 
     body.append(info);
     nameCell.append(body);
@@ -1319,7 +1385,12 @@ function syncUserURL() {
         return;
     }
 
-    const url = buildUserURL(userState.name, userState.list, userState.page, userState.pageSize);
+    const url = buildUserURL(
+        userState.name,
+        userState.list,
+        userState.page,
+        userState.pageSize,
+    );
     if (url !== location.pathname + location.search + location.hash) {
         history.replaceState({}, "", url);
         currentHref = url;
@@ -1454,7 +1525,24 @@ function renderUserSummary(data) {
     userStatusBadge.textContent = status.label;
     userStatusBadge.dataset.status = status.tone;
 
-    const rows = [
+    const rows = [];
+
+    // Show the Steam avatar above the name, the same way Search Users shows
+    // it in each result row. Users without profile data have no avatar.
+    const avatar = user.avatarMedium || user.avatarFull || user.avatar;
+    if (avatar) {
+        const image = newElement("img", "user-summary__avatar");
+        image.src = avatar;
+        image.alt = "";
+        image.loading = "lazy";
+        const avatarValue = newElement("dd");
+        avatarValue.append(image);
+        const avatarRow = newElement("div", "details__row details__row--avatar");
+        avatarRow.append(newElement("dt", "visually-hidden", "Avatar"), avatarValue);
+        rows.push(avatarRow);
+    }
+
+    rows.push(
         detailRow("Steam name", user.name ?? ""),
         // Steam IDs exceed JavaScript's safe integer range, so keep them as text.
         detailRow(
@@ -1463,6 +1551,8 @@ function renderUserSummary(data) {
                 ? ""
                 : String(user.steamId),
         ),
+        detailRow("Personaname", user.personaName || "—"),
+        buildProfileURLRow(user.profileUrl),
         detailRowNode(
             "Wishlist privacy",
             badge(
@@ -1472,7 +1562,7 @@ function renderUserSummary(data) {
         ),
         detailRow("Owned apps", formatCount(data.ownedAppCount ?? 0)),
         detailRow("Wishlist apps", formatCount(data.wishlistAppCount ?? 0)),
-    ];
+    );
 
     if (latest?.error) {
         rows.push(detailRow("Import error", latest.error));
@@ -1531,7 +1621,9 @@ function buildUserAppRows(app, index) {
         body.append(image);
     }
     const info = newElement("div", "app-cell__info");
-    info.append(newElement("span", "app-cell__name", app.name ?? "Unknown app"));
+    info.append(
+        newElement("span", "app-cell__name", app.name ?? "Unknown app"),
+    );
 
     const releaseLabel = appReleaseLabel(app);
     if (releaseLabel !== "—") {
@@ -1560,10 +1652,7 @@ function buildUserAppRows(app, index) {
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-controls", detailsID);
-    toggle.setAttribute(
-        "aria-label",
-        `Show details for ${app.name ?? "app"}`,
-    );
+    toggle.setAttribute("aria-label", `Show details for ${app.name ?? "app"}`);
 
     const chevron = newElement("span", "app-expand__chevron");
     chevron.setAttribute("aria-hidden", "true");
@@ -1779,19 +1868,33 @@ function renderUserPagination(data) {
     const hasPages = totalPages > 0;
 
     userPagination.append(
-        paginationButton("Previous", current - 1, current <= 1 || !hasPages, "Previous page"),
+        paginationButton(
+            "Previous",
+            current - 1,
+            current <= 1 || !hasPages,
+            "Previous page",
+        ),
     );
 
     if (hasPages) {
         for (const item of paginationItems(current, totalPages)) {
             if (item === "ellipsis") {
-                const ellipsis = newElement("span", "pagination__ellipsis", "…");
+                const ellipsis = newElement(
+                    "span",
+                    "pagination__ellipsis",
+                    "…",
+                );
                 ellipsis.setAttribute("aria-hidden", "true");
                 userPagination.append(ellipsis);
                 continue;
             }
 
-            const button = paginationButton(String(item), item, false, `Page ${item}`);
+            const button = paginationButton(
+                String(item),
+                item,
+                false,
+                `Page ${item}`,
+            );
             if (item === current) {
                 button.setAttribute("aria-current", "page");
                 button.disabled = true;
@@ -1801,7 +1904,12 @@ function renderUserPagination(data) {
     }
 
     userPagination.append(
-        paginationButton("Next", current + 1, !hasPages || current >= totalPages, "Next page"),
+        paginationButton(
+            "Next",
+            current + 1,
+            !hasPages || current >= totalPages,
+            "Next page",
+        ),
     );
 }
 
@@ -1841,7 +1949,10 @@ function setActiveTab(list) {
     const wishlist = list === "wishlist";
     tabOwned.setAttribute("aria-selected", String(!wishlist));
     tabWishlist.setAttribute("aria-selected", String(wishlist));
-    userAppPanel.setAttribute("aria-labelledby", wishlist ? "tab-wishlist" : "tab-owned");
+    userAppPanel.setAttribute(
+        "aria-labelledby",
+        wishlist ? "tab-wishlist" : "tab-owned",
+    );
 }
 
 function clearUserView() {
@@ -2053,9 +2164,7 @@ async function loadCommonGamesUsersFromURL(steamIDs, submitted) {
             return;
         }
 
-        const users = Array.isArray(body?.steamUsers)
-            ? body.steamUsers
-            : [];
+        const users = Array.isArray(body?.steamUsers) ? body.steamUsers : [];
         const usersByID = new Map(
             users.map((user) => [String(user.steamId ?? ""), user]),
         );
@@ -2214,7 +2323,9 @@ function buildCommonGamesSearchResult(user) {
         badge(status.label, status.tone),
     );
     main.append(heading);
-    main.append(newElement("p", "result__id", `Steam ID ${user.steamId ?? ""}`));
+    main.append(
+        newElement("p", "result__id", `Steam ID ${user.steamId ?? ""}`),
+    );
 
     const stats = newElement("dl", "result__stats");
     stats.append(
@@ -2225,7 +2336,8 @@ function buildCommonGamesSearchResult(user) {
 
     const steamID = String(user.steamId ?? "");
     const selected = commonGamesState.selectedUsers.has(steamID);
-    const atLimit = commonGamesState.selectedUsers.size >= MAX_COMMON_GAME_USERS;
+    const atLimit =
+        commonGamesState.selectedUsers.size >= MAX_COMMON_GAME_USERS;
     const available = user.hasSucceededImport === true;
 
     const action = newElement("button", "result__link");
@@ -2475,9 +2587,7 @@ function buildCommonGameUsers(users) {
     }
 
     const container = newElement("span", "common-game-users");
-    container.append(
-        ...users.map((user) => buildCommonGamesQueryUser(user)),
-    );
+    container.append(...users.map((user) => buildCommonGamesQueryUser(user)));
     return container;
 }
 
@@ -2563,10 +2673,7 @@ function buildCommonGameRows(game, users, index) {
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-controls", detailsID);
-    toggle.setAttribute(
-        "aria-label",
-        `Show details for ${game.name ?? "app"}`,
-    );
+    toggle.setAttribute("aria-label", `Show details for ${game.name ?? "app"}`);
 
     const chevron = newElement("span", "app-expand__chevron");
     chevron.setAttribute("aria-hidden", "true");
@@ -2722,11 +2829,11 @@ function commonGamesPercentColor(percent) {
         if (percent <= next.percent) {
             const previous = COMMON_GAMES_PERCENT_STOPS[index - 1];
             const position =
-                (percent - previous.percent) / (next.percent - previous.percent);
+                (percent - previous.percent) /
+                (next.percent - previous.percent);
             return previous.color.map((channel, channelIndex) =>
                 Math.round(
-                    channel +
-                        (next.color[channelIndex] - channel) * position,
+                    channel + (next.color[channelIndex] - channel) * position,
                 ),
             );
         }
@@ -2875,7 +2982,10 @@ async function loadDashboard() {
             return;
         }
         dashboardMetrics.setAttribute("aria-busy", "false");
-        setDashboardStatus("Could not refresh the dashboard; retrying…", "error");
+        setDashboardStatus(
+            "Could not refresh the dashboard; retrying…",
+            "error",
+        );
     } finally {
         if (dashboardController === controller) {
             dashboardController = null;

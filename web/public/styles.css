@@ -389,6 +389,20 @@ select:disabled {
     text-align: left;
 }
 
+.details__row--avatar {
+    justify-content: flex-start;
+    padding-bottom: 0.65rem;
+}
+
+.user-summary__avatar {
+    display: block;
+    width: 64px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #0e141b;
+    object-fit: cover;
+}
+
 .details__empty {
     color: var(--muted);
 }
