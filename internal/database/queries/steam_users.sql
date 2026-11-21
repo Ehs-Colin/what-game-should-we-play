@@ -12,6 +12,11 @@ SELECT
     su.steam_id,
     su.name,
     su.wishlist_private,
+    su.personaname,
+    su.profileurl,
+    su.avatar,
+    su.avatar_medium,
+    su.avatar_full,
     su.created_at,
     su.updated_at,
     (
@@ -90,15 +95,30 @@ WHERE steam_id = $1 RETURNING *;
 INSERT INTO steam_users (
     steam_id,
     name,
+    personaname,
+    profileurl,
+    avatar,
+    avatar_medium,
+    avatar_full,
     updated_at,
     created_at
 ) VALUES (
     $1,
     $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
     NOW(),
     NOW()
 ) ON CONFLICT (steam_id) DO UPDATE SET
     name = $2,
+    personaname = $3,
+    profileurl = $4,
+    avatar = $5,
+    avatar_medium = $6,
+    avatar_full = $7,
     updated_at = NOW()
 RETURNING *;
 

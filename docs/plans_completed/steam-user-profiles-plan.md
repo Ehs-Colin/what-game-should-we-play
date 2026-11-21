@@ -343,6 +343,27 @@ a.app-cell__name:hover {
   column.
 - Leave the `.result*` styles in place; they are still used by Common Games.
 
+### 4.4 Content Security Policy
+
+The app serves `img-src 'self' data:`, which blocks every Steam CDN image —
+both the new avatars and the app header images the View User table already
+rendered. `internal/httpserver/middleware.go` now allows the vendor domain:
+
+```go
+imageSources := "'self' data: https://*.steamstatic.com"
+```
+
+Measured against the live Steam API, images are served from:
+
+| Asset | Host |
+| --- | --- |
+| App header images | `shared.akamai.steamstatic.com` (current), `cdn.cloudflare.steamstatic.com` (legacy) |
+| Profile avatars | `avatars.steamstatic.com` |
+
+A `*.steamstatic.com` wildcard is used instead of pinning one host because
+Steam has already rotated CDN hosts once. `internal/httpserver/middleware_test.go`
+asserts the `img-src` sources and that the script nonce survives.
+
 ## 5. Tests
 
 ### 5.1 Steam API client
@@ -424,7 +445,7 @@ test environment:
 | `internal/database/migrations/00002_steam_user_profiles.sql` | Add the five nullable profile columns. |
 | `internal/database/queries/steam_users.sql` | Extend `SearchSteamUsers` and `UpsertSteamUser`. |
 | `internal/database/dbgen/*` | Regenerate with `sqlc generate`. |
-| `cmd/test/seed.sql` | Add sample profile data, leaving one user empty. |
+| `cmd/test/seed.sql` | Add sample profile data, leaving one user empty. Avatar URLs use `avatars.steamstatic.com`, the host Steam serves today. |
 | `internal/api/store.go` | Replace `VanityResolver` with `SteamUserClient`. |
 | `internal/api/views.go` | Add profile fields and `nullString` helper. |
 | `internal/api/import_handler.go` | Fetch summaries and persist profile fields. |
@@ -433,6 +454,8 @@ test environment:
 | `web/public/index.html` | Replace the Search Users list with a table. |
 | `web/public/app.js` | Build table rows, status cell, and expanded details. |
 | `web/public/styles.css` | Avatar and name-link styles. |
+| `internal/httpserver/middleware.go` | Allow `https://*.steamstatic.com` in `img-src`. |
+| `internal/httpserver/middleware_test.go` | Assert the CSP image sources and the script nonce. |
 
 ## 8. Risks and notes
 

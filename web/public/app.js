@@ -93,6 +93,7 @@ const searchWishlist = document.querySelector("#search-wishlist");
 const searchReset = document.querySelector("#search-reset");
 const searchStatus = document.querySelector("#search-status");
 const searchCount = document.querySelector("#search-count");
+const searchResultsPanel = document.querySelector("#search-results-panel");
 const searchResults = document.querySelector("#search-results");
 
 const userForm = document.querySelector("#user-form");
@@ -958,7 +959,7 @@ async function performSearch() {
 function clearSearchResults() {
     searchUsers = [];
     searchResults.replaceChildren();
-    searchResults.hidden = true;
+    searchResultsPanel.hidden = true;
     searchControls.hidden = true;
     searchCount.textContent = "";
     searchCount.hidden = true;
@@ -966,7 +967,7 @@ function clearSearchResults() {
 
 function renderSearchPipeline() {
     if (searchUsers.length === 0) {
-        searchResults.hidden = true;
+        searchResultsPanel.hidden = true;
         searchControls.hidden = true;
         return;
     }
@@ -974,8 +975,10 @@ function renderSearchPipeline() {
     searchControls.hidden = false;
     const visible = visibleSearchUsers();
 
-    searchResults.replaceChildren(...visible.map(buildSearchResult));
-    searchResults.hidden = visible.length === 0;
+    searchResults.replaceChildren(
+        ...visible.flatMap((user, index) => buildSearchResultRows(user, index)),
+    );
+    searchResultsPanel.hidden = visible.length === 0;
 
     const hiddenCount = searchUsers.length - visible.length;
     if (hiddenCount > 0) {
@@ -1070,50 +1073,115 @@ function resetSearchControls() {
     searchWishlist.value = "all";
 }
 
-function buildSearchResult(user) {
-    const item = newElement("li", "result");
+function buildSearchResultRows(user, index) {
+    const row = document.createElement("tr");
+    row.className = "app-row";
 
-    const main = newElement("div", "result__main");
-    const heading = newElement("div", "result__heading");
-    heading.append(newElement("p", "result__name", user.name ?? ""));
-    main.append(heading);
-    main.append(newElement("p", "result__id", `Steam ID ${user.steamId ?? ""}`));
+    const nameCell = newElement("td", "app-cell");
+    const body = newElement("div", "app-cell__body");
+    const avatar = user.avatarMedium || user.avatarFull || user.avatar;
+    if (avatar) {
+        const image = newElement("img", "app-cell__image app-cell__image--avatar");
+        image.src = avatar;
+        image.alt = "";
+        image.loading = "lazy";
+        body.append(image);
+    }
+
+    const info = newElement("div", "app-cell__info");
+    const nameLink = newElement("a", "app-cell__name", user.name ?? "");
+    nameLink.href = `/user?name=${encodeURIComponent(user.name ?? "")}`;
+    nameLink.dataset.route = "/user";
+    info.append(nameLink);
+
+    const wishlist = user.wishlistPrivate ? "Private" : "Public";
+    const counts = `Owned: ${formatCount(user.ownedAppCount)} / Wishlist: ${formatCount(
+        user.wishlistAppCount,
+    )} · ${wishlist} wishlist`;
+    info.append(newElement("p", "app-cell__meta", counts));
+
+    body.append(info);
+    nameCell.append(body);
 
     const status = importStatus(user.latestImportStatus ?? null);
-    const stats = newElement("dl", "result__stats");
-    stats.append(
-        searchStat("Owned apps", formatCount(user.ownedAppCount)),
-        searchStat("Wishlist apps", formatCount(user.wishlistAppCount)),
-        searchStatNode(
-            "Wishlist",
-            badge(
-                user.wishlistPrivate ? "Private" : "Public",
-                user.wishlistPrivate ? "private" : "public",
-            ),
-        ),
-        searchStatNode("Status", badge(status.label, status.tone)),
+    const statusCell = newElement("td");
+    statusCell.append(badge(status.label, status.tone));
+
+    const detailsID = `search-user-details-${user.steamId ?? "unknown"}-${index}`;
+    const toggle = newElement("button", "button--secondary app-expand");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", detailsID);
+    toggle.setAttribute(
+        "aria-label",
+        `Show details for ${user.name ?? "user"}`,
     );
-    main.append(stats);
 
-    const link = newElement("a", "result__link", "View user");
-    link.href = `/user?name=${encodeURIComponent(user.name ?? "")}`;
-    link.dataset.route = "/user";
+    const chevron = newElement("span", "app-expand__chevron");
+    chevron.setAttribute("aria-hidden", "true");
+    toggle.append(chevron);
 
-    item.append(main, link);
-    return item;
+    const expandCell = newElement("td", "app-expand-cell");
+    expandCell.append(toggle);
+
+    const detailsRow = document.createElement("tr");
+    detailsRow.className = "app-details-row";
+    detailsRow.hidden = true;
+
+    const detailsCell = newElement("td", "app-details-cell");
+    detailsCell.colSpan = 3;
+
+    const details = newElement("div", "app-details");
+    details.id = detailsID;
+    details.append(buildSearchResultDetails(user));
+    detailsCell.append(details);
+    detailsRow.append(detailsCell);
+
+    toggle.addEventListener("click", () => {
+        const expanded = toggle.getAttribute("aria-expanded") === "true";
+        toggle.setAttribute("aria-expanded", String(!expanded));
+        toggle.setAttribute(
+            "aria-label",
+            expanded
+                ? `Show details for ${user.name ?? "user"}`
+                : `Hide details for ${user.name ?? "user"}`,
+        );
+        detailsRow.hidden = expanded;
+    });
+
+    row.append(nameCell, statusCell, expandCell);
+
+    return [row, detailsRow];
+}
+
+function buildSearchResultDetails(user) {
+    const details = newElement("dl", "details app-details__list");
+    // Steam IDs exceed JavaScript's safe integer range, so keep them as text.
+    details.append(
+        detailRow("Steam user name", user.name ?? ""),
+        detailRow("Steam ID", String(user.steamId ?? "")),
+        detailRow("Personaname", user.personaName || "—"),
+        buildProfileURLRow(user.profileUrl),
+    );
+    return details;
+}
+
+function buildProfileURLRow(profileUrl) {
+    const href = safeExternalURL(profileUrl);
+    if (!href) {
+        return detailRow("Profile URL", "—");
+    }
+
+    const link = newElement("a", "app-details__website", href);
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return detailRowNode("Profile URL", link);
 }
 
 function searchStat(label, value) {
     const row = newElement("div", "result__stat");
     row.append(newElement("dt", "", label), newElement("dd", "", value));
-    return row;
-}
-
-function searchStatNode(label, node) {
-    const row = newElement("div", "result__stat");
-    const value = newElement("dd");
-    value.append(node);
-    row.append(newElement("dt", "", label), value);
     return row;
 }
 

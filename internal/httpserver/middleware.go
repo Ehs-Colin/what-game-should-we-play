@@ -83,7 +83,11 @@ func validateRequestOrigin(appOrigin string) middleware { //renderer *templates.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		allowedNonce := httpx.CSPNonce(request.Context())
-		responseWriter.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+allowedNonce+"'; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
+		// Steam serves app header images and profile avatars from rotating
+		// *.steamstatic.com CDN hosts, so the whole vendor subdomain tree is
+		// allowed rather than pinning one host that changes over time.
+		imageSources := "'self' data: https://*.steamstatic.com"
+		responseWriter.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+allowedNonce+"'; style-src 'self'; img-src "+imageSources+"; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 		responseWriter.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		responseWriter.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 		responseWriter.Header().Set("Origin-Agent-Cluster", "?1")

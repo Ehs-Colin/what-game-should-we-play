@@ -24,12 +24,37 @@ const (
 	testSteamID         = int64(76561198000000001)
 	testVanity          = "someplayer"
 	testRefreshInterval = time.Hour
+
+	testSteamIDString = "76561198000000001"
+	testPersonaName   = "Test Persona"
+	testProfileURL    = "https://steamcommunity.com/profiles/" + testSteamIDString + "/"
+	testAvatar        = "https://cdn.example.test/avatars/small.jpg"
+	testAvatarMedium  = "https://cdn.example.test/avatars/medium.jpg"
+	testAvatarFull    = "https://cdn.example.test/avatars/full.jpg"
 )
+
+// testPlayer is the profile fakeResolver reports when no override is set.
+func testPlayer(steamID string) steamapi.PlayerSummary {
+	return steamapi.PlayerSummary{
+		SteamID:      steamID,
+		PersonaName:  testPersonaName,
+		ProfileURL:   "https://steamcommunity.com/profiles/" + steamID + "/",
+		Avatar:       testAvatar,
+		AvatarMedium: testAvatarMedium,
+		AvatarFull:   testAvatarFull,
+	}
+}
 
 type fakeResolver struct {
 	ids   map[string]int64
 	err   error
 	calls *int
+
+	// summaries overrides the GetPlayerSummaries reply. When nil the resolver
+	// returns a single fully populated player.
+	summaries *steamapi.GetPlayerSummariesResponse
+	// summaryErr is returned by GetPlayerSummaries instead of a profile.
+	summaryErr error
 }
 
 // stubAuthService lets handler tests build the API handler without a real auth
@@ -73,6 +98,25 @@ func (f fakeResolver) ResolveVanityURL(_ context.Context, vanityUrl string) (*st
 		result.Response.Success = 42 // Steam's "no match"
 	}
 	return result, nil
+}
+
+func (f fakeResolver) GetPlayerSummaries(_ context.Context, steamIDs []string) (*steamapi.GetPlayerSummariesResponse, error) {
+	if f.summaryErr != nil {
+		return nil, f.summaryErr
+	}
+	if f.summaries != nil {
+		return f.summaries, nil
+	}
+	if len(steamIDs) == 0 {
+		return &steamapi.GetPlayerSummariesResponse{}, nil
+	}
+
+	steamID := steamIDs[0]
+	return &steamapi.GetPlayerSummariesResponse{
+		Response: steamapi.GetPlayerSummariesResponseData{
+			Players: []steamapi.PlayerSummary{testPlayer(steamID)},
+		},
+	}, nil
 }
 
 type handlerEnv struct {
@@ -168,6 +212,108 @@ func TestInsertSteamUserNewUser(t *testing.T) {
 	}
 	if want := strconv.FormatInt(testSteamID, 10); body.ImportJob.SteamID != want {
 		t.Fatalf("importJob.steamId = %q, want %q", body.ImportJob.SteamID, want)
+	}
+	// The vanity slug stays the searchable name; Steam's display name is
+	// reported separately.
+	if body.SteamUser.PersonaName == nil || *body.SteamUser.PersonaName != testPersonaName {
+		t.Fatalf("personaName = %v, want %q", body.SteamUser.PersonaName, testPersonaName)
+	}
+	if body.SteamUser.ProfileURL == nil || *body.SteamUser.ProfileURL != testProfileURL {
+		t.Fatalf("profileUrl = %v, want %q", body.SteamUser.ProfileURL, testProfileURL)
+	}
+	if body.SteamUser.Avatar == nil || *body.SteamUser.Avatar != testAvatar {
+		t.Fatalf("avatar = %v, want %q", body.SteamUser.Avatar, testAvatar)
+	}
+	if body.SteamUser.AvatarMedium == nil || *body.SteamUser.AvatarMedium != testAvatarMedium {
+		t.Fatalf("avatarMedium = %v, want %q", body.SteamUser.AvatarMedium, testAvatarMedium)
+	}
+	if body.SteamUser.AvatarFull == nil || *body.SteamUser.AvatarFull != testAvatarFull {
+		t.Fatalf("avatarFull = %v, want %q", body.SteamUser.AvatarFull, testAvatarFull)
+	}
+
+	// The response is read back from the row the handler wrote.
+	assertSteamUserProfile(t, env, testSteamID, steamProfileFields{
+		personaName:  testPersonaName,
+		profileURL:   testProfileURL,
+		avatar:       testAvatar,
+		avatarMedium: testAvatarMedium,
+		avatarFull:   testAvatarFull,
+	})
+}
+
+func TestInsertSteamUserRefreshesProfile(t *testing.T) {
+	// The fake returns this response, so mutating it between posts stands in
+	// for Steam reporting different values on the next import.
+	summaries := &steamapi.GetPlayerSummariesResponse{
+		Response: steamapi.GetPlayerSummariesResponseData{
+			Players: []steamapi.PlayerSummary{testPlayer(testSteamIDString)},
+		},
+	}
+	env := newHandlerEnv(t, fakeResolver{
+		ids:       map[string]int64{testVanity: testSteamID},
+		summaries: summaries,
+	})
+	recorder, first := env.postUser(t)
+	assertCreated(t, recorder, first)
+	if first.SteamUser.Avatar == nil {
+		t.Fatalf("first insert stored no avatar: %+v", first.SteamUser)
+	}
+
+	player := &summaries.Response.Players[0]
+	player.PersonaName = "Renamed Persona"
+	player.ProfileURL = "https://steamcommunity.com/id/renamed/"
+	player.Avatar = ""
+	player.AvatarMedium = ""
+	player.AvatarFull = ""
+
+	recorder, _ = env.postUser(t)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	stored := assertSteamUserProfile(t, env, testSteamID, steamProfileFields{
+		personaName: "Renamed Persona",
+		profileURL:  "https://steamcommunity.com/id/renamed/",
+	})
+	if stored.Name != testVanity {
+		t.Fatalf("name = %q, want the vanity slug %q", stored.Name, testVanity)
+	}
+}
+
+func TestInsertSteamUserSummaryFailuresStoreNothing(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolver fakeResolver
+		wantCode int
+	}{
+		{
+			name:     "steam error",
+			resolver: fakeResolver{ids: map[string]int64{testVanity: testSteamID}, summaryErr: errors.New("boom")},
+			wantCode: http.StatusInternalServerError,
+		},
+		{
+			name: "no players",
+			resolver: fakeResolver{
+				ids:       map[string]int64{testVanity: testSteamID},
+				summaries: &steamapi.GetPlayerSummariesResponse{},
+			},
+			wantCode: http.StatusNotFound,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			env := newHandlerEnv(t, test.resolver)
+			recorder := env.do(t, http.MethodPost, "/api/steamuser", `{"vanityUrl":"`+testVanity+`"}`)
+			if recorder.Code != test.wantCode {
+				t.Fatalf("status = %d, want %d (%s)", recorder.Code, test.wantCode, recorder.Body.String())
+			}
+			if _, err := env.queries.GetSteamUser(context.Background(), testSteamID); !errors.Is(err, sql.ErrNoRows) {
+				t.Fatalf("GetSteamUser error = %v, want sql.ErrNoRows", err)
+			}
+			if got := env.jobCount(t); got != 0 {
+				t.Fatalf("%d jobs created, want 0", got)
+			}
+		})
 	}
 }
 
@@ -322,6 +468,68 @@ func seedSteamUser(t *testing.T, env *handlerEnv, steamID int64, name string) {
 	}); err != nil {
 		t.Fatalf("create steam user: %v", err)
 	}
+}
+
+// steamProfileFields are the GetPlayerSummaries values stored on steam_users.
+// An empty field is expected to be NULL, which is how InsertSteamUser records
+// a value Steam omitted.
+type steamProfileFields struct {
+	personaName  string
+	profileURL   string
+	avatar       string
+	avatarMedium string
+	avatarFull   string
+}
+
+// seedSteamUserProfile writes profile data directly, the way InsertSteamUser
+// does after a successful GetPlayerSummaries call.
+func seedSteamUserProfile(t *testing.T, env *handlerEnv, steamID int64, name string, profile steamProfileFields) {
+	t.Helper()
+	if _, err := env.queries.UpsertSteamUser(context.Background(), dbgen.UpsertSteamUserParams{
+		SteamID:      steamID,
+		Name:         name,
+		Personaname:  nullString(profile.personaName),
+		Profileurl:   nullString(profile.profileURL),
+		Avatar:       nullString(profile.avatar),
+		AvatarMedium: nullString(profile.avatarMedium),
+		AvatarFull:   nullString(profile.avatarFull),
+	}); err != nil {
+		t.Fatalf("upsert steam user profile: %v", err)
+	}
+}
+
+// assertSteamUserProfile reads the stored row back and compares its profile
+// columns, then returns it for any further assertions.
+func assertSteamUserProfile(t *testing.T, env *handlerEnv, steamID int64, want steamProfileFields) dbgen.SteamUser {
+	t.Helper()
+
+	stored, err := env.queries.GetSteamUser(context.Background(), steamID)
+	if err != nil {
+		t.Fatalf("get steam user: %v", err)
+	}
+	checks := []struct {
+		column string
+		got    sql.NullString
+		want   string
+	}{
+		{column: "personaname", got: stored.Personaname, want: want.personaName},
+		{column: "profileurl", got: stored.Profileurl, want: want.profileURL},
+		{column: "avatar", got: stored.Avatar, want: want.avatar},
+		{column: "avatar_medium", got: stored.AvatarMedium, want: want.avatarMedium},
+		{column: "avatar_full", got: stored.AvatarFull, want: want.avatarFull},
+	}
+	for _, check := range checks {
+		if check.want == "" {
+			if check.got.Valid {
+				t.Fatalf("%s = %q, want NULL", check.column, check.got.String)
+			}
+			continue
+		}
+		if !check.got.Valid || check.got.String != check.want {
+			t.Fatalf("%s = %q (valid=%v), want %q", check.column, check.got.String, check.got.Valid, check.want)
+		}
+	}
+	return stored
 }
 
 func TestGetSteamUserByNameFound(t *testing.T) {

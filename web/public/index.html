@@ -361,7 +361,22 @@
                     ></p>
                     <p id="search-count" class="hint" hidden></p>
 
-                    <ul id="search-results" class="result-list" hidden></ul>
+                    <div id="search-results-panel" class="table-scroll" hidden>
+                        <table id="search-table" class="app-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">User</th>
+                                    <th scope="col">Status</th>
+                                    <th
+                                        scope="col"
+                                        class="app-expand-heading"
+                                        aria-label="Expand"
+                                    ></th>
+                                </tr>
+                            </thead>
+                            <tbody id="search-results"></tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 

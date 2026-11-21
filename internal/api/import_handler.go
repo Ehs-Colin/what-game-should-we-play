@@ -65,9 +65,32 @@ func (handler *Handler) InsertSteamUser(responseWriter http.ResponseWriter, requ
 		return
 	}
 
+	// The profile is stored alongside the vanity name so Search Users can show
+	// the Steam display name, profile URL, and avatars. Nothing is written and
+	// no import is queued when this fails.
+	summaries, err := handler.apiStore.steamClient.GetPlayerSummaries(
+		request.Context(),
+		[]string{resolved.Response.SteamID},
+	)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	// Steam returns an empty list when the ID has no profile.
+	if len(summaries.Response.Players) == 0 {
+		httpx.RespondWithError(responseWriter, http.StatusNotFound, "steam user not found")
+		return
+	}
+	player := summaries.Response.Players[0]
+
 	steamUser, err := handler.apiStore.queries.UpsertSteamUser(request.Context(), dbgen.UpsertSteamUserParams{
-		SteamID: steamID,
-		Name:    vanityUrl,
+		SteamID:      steamID,
+		Name:         vanityUrl,
+		Personaname:  nullString(player.PersonaName),
+		Profileurl:   nullString(player.ProfileURL),
+		Avatar:       nullString(player.Avatar),
+		AvatarMedium: nullString(player.AvatarMedium),
+		AvatarFull:   nullString(player.AvatarFull),
 	})
 	if err != nil {
 		handler.internalError(responseWriter, request, err)

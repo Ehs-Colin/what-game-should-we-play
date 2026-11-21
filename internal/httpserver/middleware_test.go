@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpx"
 )
 
 func TestValidateRequestOrigin(t *testing.T) {
@@ -60,6 +62,54 @@ func TestValidateRequestOrigin(t *testing.T) {
 				t.Fatalf("body = %q, want it to contain the error page title", body)
 			}
 		})
+	}
+}
+
+func TestSecurityHeadersAllowSteamImages(t *testing.T) {
+	handler := securityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	request := httptest.NewRequest(http.MethodGet, "/search", nil)
+	request = request.WithContext(httpx.WithCSPNonce(request.Context(), "test-nonce"))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	policy := recorder.Header().Get("Content-Security-Policy")
+	if policy == "" {
+		t.Fatal("missing Content-Security-Policy header")
+	}
+
+	directives := map[string]string{}
+	for _, part := range strings.Split(policy, ";") {
+		fields := strings.Fields(strings.TrimSpace(part))
+		if len(fields) > 0 {
+			directives[fields[0]] = strings.Join(fields[1:], " ")
+		}
+	}
+
+	// Steam serves app header images from shared.akamai/cdn.cloudflare and
+	// profile avatars from avatars, all under *.steamstatic.com. A wildcard
+	// keeps working when Steam rotates CDN hosts.
+	wantImageSources := "'self' data: https://*.steamstatic.com"
+	if got := directives["img-src"]; got != wantImageSources {
+		t.Fatalf("img-src = %q, want %q", got, wantImageSources)
+	}
+	// The nonce is what makes inline scripts legal, so it must survive the
+	// policy being extended.
+	if got := directives["script-src"]; got != "'self' 'nonce-test-nonce'" {
+		t.Fatalf("script-src = %q, want \"'self' 'nonce-test-nonce'\"", got)
+	}
+	for directive, want := range map[string]string{
+		"default-src":     "'self'",
+		"style-src":       "'self'",
+		"object-src":      "'none'",
+		"base-uri":        "'self'",
+		"form-action":     "'self'",
+		"frame-src":       "'self'",
+		"frame-ancestors": "'self'",
+	} {
+		if got := directives[directive]; got != want {
+			t.Errorf("%s = %q, want %q", directive, got, want)
+		}
 	}
 }
 

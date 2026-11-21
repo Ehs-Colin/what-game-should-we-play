@@ -2,8 +2,10 @@ package steamapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -89,4 +91,27 @@ func normalizeSteamID(steamID string) string {
 		return strconv.FormatInt(id, 10)
 	}
 	return trimmed
+}
+
+// normalizeSteamIDList trims, normalizes, deduplicates, and sorts Steam IDs so
+// batch requests use a stable cache key regardless of the caller's order.
+func normalizeSteamIDList(steamIDs []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(steamIDs))
+	normalized := make([]string, 0, len(steamIDs))
+	for _, steamID := range steamIDs {
+		id := normalizeSteamID(steamID)
+		if id == "" {
+			return nil, errors.New("Steam IDs must not be blank")
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	if len(normalized) == 0 {
+		return nil, errors.New("at least one Steam ID is required")
+	}
+	sort.Strings(normalized)
+	return normalized, nil
 }

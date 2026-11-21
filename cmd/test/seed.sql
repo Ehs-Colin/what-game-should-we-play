@@ -174,17 +174,23 @@ FROM (VALUES
 WHERE apps.steam_appid = v.steam_appid;
 
 -- Users. CaseTwin and casetwin differ only by case; CaseTwin has the newer
--- updated_at and is the one View User must resolve.
-INSERT INTO steam_users (steam_id, name, wishlist_private, created_at, updated_at) VALUES
-    (76561198000000001, 'SomePlayer',      false, now() - interval '30 days', now() - interval '2 hours'),
-    (76561198000000002, 'PlayerTwo',       false, now() - interval '20 days', now() - interval '5 minutes'),
-    (76561198000000003, 'Alice',           false, now() - interval '90 days', now() - interval '20 minutes'),
-    (76561198000000004, 'BobTheBuilder',   false, now() - interval '45 days', now() - interval '1 day'),
-    (76561198000000005, 'CaseTwin',        false, now() - interval '60 days', now() - interval '1 hour'),
-    (76561198000000006, 'casetwin',        false, now() - interval '70 days', now() - interval '3 days'),
-    (76561198000000007, 'EmptyUser',       false, now() - interval '2 days',  now() - interval '2 days'),
-    (76561198000000008, 'WishlistOnly',    false, now() - interval '15 days', now() - interval '6 hours'),
-    (76561198000000009, 'PrivateWishlist', true,  now() - interval '5 days',  now() - interval '8 hours');
+-- updated_at and is the one View User must resolve. personaname is the Steam
+-- profile name shown in the expanded Search Users row; the three avatar sizes
+-- come from GetPlayerSummaries. EmptyUser keeps NULL profile fields so the
+-- no-avatar and missing-profile fallbacks stay visible.
+INSERT INTO steam_users (
+    steam_id, name, wishlist_private, personaname, profileurl,
+    avatar, avatar_medium, avatar_full, created_at, updated_at
+) VALUES
+    (76561198000000001, 'SomePlayer',      false, 'Some Player',     'https://steamcommunity.com/profiles/76561198000000001/', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg', now() - interval '30 days', now() - interval '2 hours'),
+    (76561198000000002, 'PlayerTwo',       false, 'Player Two',      'https://steamcommunity.com/profiles/76561198000000002/', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg', now() - interval '20 days', now() - interval '5 minutes'),
+    (76561198000000003, 'Alice',           false, 'Alice',           'https://steamcommunity.com/profiles/76561198000000003/', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg', now() - interval '90 days', now() - interval '20 minutes'),
+    (76561198000000004, 'BobTheBuilder',   false, 'Bob the Builder', 'https://steamcommunity.com/profiles/76561198000000004/', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg', now() - interval '45 days', now() - interval '1 day'),
+    (76561198000000005, 'CaseTwin',        false, 'Case Twin',       'https://steamcommunity.com/profiles/76561198000000005/', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg', now() - interval '60 days', now() - interval '1 hour'),
+    (76561198000000006, 'casetwin',        false, 'case twin',       'https://steamcommunity.com/profiles/76561198000000006/', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg', now() - interval '70 days', now() - interval '3 days'),
+    (76561198000000007, 'EmptyUser',       false, NULL,              NULL, NULL, NULL, NULL, now() - interval '2 days',  now() - interval '2 days'),
+    (76561198000000008, 'WishlistOnly',    false, 'Wishlist Only',   'https://steamcommunity.com/profiles/76561198000000008/', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg', now() - interval '15 days', now() - interval '6 hours'),
+    (76561198000000009, 'PrivateWishlist', true,  'Private Wishlist','https://steamcommunity.com/profiles/76561198000000009/', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg', 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg', now() - interval '5 days',  now() - interval '8 hours');
 
 -- SomePlayer owns 34 canonical apps (page 2 at 25 per page) plus two extra
 -- aliases for app 730: one active duplicate and one removed.

@@ -122,11 +122,16 @@ type SteamApiCacheCall struct {
 }
 
 type SteamUser struct {
-	SteamID         int64     `json:"steam_id"`
-	Name            string    `json:"name"`
-	WishlistPrivate bool      `json:"wishlist_private"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	SteamID         int64          `json:"steam_id"`
+	Name            string         `json:"name"`
+	WishlistPrivate bool           `json:"wishlist_private"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	Personaname     sql.NullString `json:"personaname"`
+	Profileurl      sql.NullString `json:"profileurl"`
+	Avatar          sql.NullString `json:"avatar"`
+	AvatarMedium    sql.NullString `json:"avatar_medium"`
+	AvatarFull      sql.NullString `json:"avatar_full"`
 }
 
 type SteamUserApp struct {

@@ -803,11 +803,30 @@ select:disabled {
     margin-bottom: 0.5rem;
 }
 
+/* Square Steam avatars must not inherit the 460x215 header-image ratio. */
+.app-cell__image--avatar {
+    width: 2.75rem;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .app-cell__name {
     display: block;
     overflow-wrap: anywhere;
     font-size: 1rem;
     font-weight: 700;
+}
+
+/* Search Users names link to View User but read as row titles, not links. */
+a.app-cell__name {
+    color: var(--text);
+    text-decoration: none;
+}
+
+a.app-cell__name:hover {
+    color: var(--accent);
+    text-decoration: underline;
 }
 
 .app-store a {

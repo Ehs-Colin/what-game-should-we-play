@@ -13,6 +13,11 @@ type steamUserView struct {
 	SteamID         string    `json:"steamId"`
 	Name            string    `json:"name"`
 	WishlistPrivate bool      `json:"wishlistPrivate"`
+	PersonaName     *string   `json:"personaName"`
+	ProfileURL      *string   `json:"profileUrl"`
+	Avatar          *string   `json:"avatar"`
+	AvatarMedium    *string   `json:"avatarMedium"`
+	AvatarFull      *string   `json:"avatarFull"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
 }
@@ -22,6 +27,11 @@ func newSteamUserView(user dbgen.SteamUser) steamUserView {
 		SteamID:         formatSteamID(user.SteamID),
 		Name:            user.Name,
 		WishlistPrivate: user.WishlistPrivate,
+		PersonaName:     nullableString(user.Personaname),
+		ProfileURL:      nullableString(user.Profileurl),
+		Avatar:          nullableString(user.Avatar),
+		AvatarMedium:    nullableString(user.AvatarMedium),
+		AvatarFull:      nullableString(user.AvatarFull),
 		CreatedAt:       user.CreatedAt,
 		UpdatedAt:       user.UpdatedAt,
 	}
@@ -132,6 +142,11 @@ type steamUserSummaryView struct {
 	SteamID              string     `json:"steamId"`
 	Name                 string     `json:"name"`
 	WishlistPrivate      bool       `json:"wishlistPrivate"`
+	PersonaName          *string    `json:"personaName"`
+	ProfileURL           *string    `json:"profileUrl"`
+	Avatar               *string    `json:"avatar"`
+	AvatarMedium         *string    `json:"avatarMedium"`
+	AvatarFull           *string    `json:"avatarFull"`
 	OwnedAppCount        int64      `json:"ownedAppCount"`
 	WishlistAppCount     int64      `json:"wishlistAppCount"`
 	LatestImportStatus   *string    `json:"latestImportStatus"`
@@ -146,6 +161,11 @@ func newSteamUserSummaryView(row dbgen.SearchSteamUsersRow) steamUserSummaryView
 		SteamID:            formatSteamID(row.SteamID),
 		Name:               row.Name,
 		WishlistPrivate:    row.WishlistPrivate,
+		PersonaName:        nullableString(row.Personaname),
+		ProfileURL:         nullableString(row.Profileurl),
+		Avatar:             nullableString(row.Avatar),
+		AvatarMedium:       nullableString(row.AvatarMedium),
+		AvatarFull:         nullableString(row.AvatarFull),
 		OwnedAppCount:      row.OwnedAppCount,
 		WishlistAppCount:   row.WishlistAppCount,
 		HasActiveJob:       row.HasActiveJob,
@@ -215,6 +235,12 @@ func splitSteamIDList(value string) []string {
 		return []string{}
 	}
 	return strings.Split(value, ",")
+}
+
+// nullString stores an absent Steam profile value as NULL instead of an empty
+// string. It's the inverse of nullableString.
+func nullString(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
 }
 
 func nullableString(value sql.NullString) *string {

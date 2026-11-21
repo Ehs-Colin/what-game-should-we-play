@@ -137,6 +137,15 @@ func TestClientCacheKeys(t *testing.T) {
 			},
 		},
 		{
+			name:     "player summaries",
+			response: `{"response":{"players":[{"steamid":"` + steamID + `","personaname":"Gabe"}]}}`,
+			wantKey:  "v2:player_summaries:" + steamID,
+			call: func(client *Client) error {
+				_, err := client.GetPlayerSummaries(context.Background(), []string{steamID})
+				return err
+			},
+		},
+		{
 			name:     "groups",
 			response: `{"response":{"groups":[]}}`,
 			wantKey:  "v1:groups:" + steamID,
@@ -212,6 +221,15 @@ func TestClientNormalizesSteamIDInCacheKeys(t *testing.T) {
 			wantKey:  "v1:friends:" + steamID,
 			call: func(client *Client) error {
 				_, err := client.GetFriendList(context.Background(), "076561198000000001")
+				return err
+			},
+		},
+		{
+			name:     "player summaries",
+			response: `{"response":{"players":[]}}`,
+			wantKey:  "v2:player_summaries:" + steamID,
+			call: func(client *Client) error {
+				_, err := client.GetPlayerSummaries(context.Background(), []string{" 076561198000000001 "})
 				return err
 			},
 		},
@@ -426,6 +444,14 @@ func TestClientDoesNotRecordFailures(t *testing.T) {
 				return err
 			},
 			wantErr: ErrAppNotFound,
+		},
+		{
+			name:   "player summaries server error",
+			status: http.StatusInternalServerError,
+			call: func(client *Client) error {
+				_, err := client.GetPlayerSummaries(context.Background(), []string{"76561198000000001"})
+				return err
+			},
 		},
 	}
 

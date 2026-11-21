@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -264,6 +265,68 @@ func TestSearchSteamUsersPartialCaseInsensitive(t *testing.T) {
 				t.Fatalf("unexpected user order: %+v", body.SteamUsers)
 			}
 		})
+	}
+}
+
+func TestSearchSteamUsersReturnsProfileFields(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+
+	seedSteamUser(t, env, 1001, "ProfiledSteam")
+	seedSteamUserProfile(t, env, 1001, "ProfiledSteam", steamProfileFields{
+		personaName:  "Profiled Persona",
+		profileURL:   "https://steamcommunity.com/id/profiled/",
+		avatar:       "https://cdn.example.test/small.jpg",
+		avatarMedium: "https://cdn.example.test/medium.jpg",
+		avatarFull:   "https://cdn.example.test/full.jpg",
+	})
+	// A user that never went through InsertSteamUser has NULL profile columns.
+	seedSteamUser(t, env, 1002, "PlainSteam")
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers/search?name="+url.QueryEscape("steam"), "")
+	requireStatus(t, recorder, http.StatusOK)
+
+	body := decodeJSON[searchSteamUsersResponse](t, recorder)
+	if len(body.SteamUsers) != 2 {
+		t.Fatalf("users = %d, want 2 (%s)", len(body.SteamUsers), recorder.Body.String())
+	}
+	byName := summariesByName(body.SteamUsers)
+
+	profiled := byName["ProfiledSteam"]
+	if profiled.PersonaName == nil || *profiled.PersonaName != "Profiled Persona" {
+		t.Fatalf("personaName = %v, want %q", profiled.PersonaName, "Profiled Persona")
+	}
+	if profiled.ProfileURL == nil || *profiled.ProfileURL != "https://steamcommunity.com/id/profiled/" {
+		t.Fatalf("profileUrl = %v", profiled.ProfileURL)
+	}
+	for name, got := range map[string]*string{
+		"avatar":       profiled.Avatar,
+		"avatarMedium": profiled.AvatarMedium,
+		"avatarFull":   profiled.AvatarFull,
+	} {
+		if got == nil || !strings.HasPrefix(*got, "https://cdn.example.test/") {
+			t.Fatalf("%s = %v, want a CDN URL", name, got)
+		}
+	}
+
+	plain := byName["PlainSteam"]
+	if plain.PersonaName != nil || plain.ProfileURL != nil || plain.Avatar != nil ||
+		plain.AvatarMedium != nil || plain.AvatarFull != nil {
+		t.Fatalf("unprofiled user should report nulls: %+v", plain)
+	}
+
+	// The frontend reads these exact JSON keys, so verify the wire format too.
+	var raw struct {
+		SteamUsers []map[string]json.RawMessage `json:"steamUsers"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw: %v", err)
+	}
+	for _, user := range raw.SteamUsers {
+		for _, key := range []string{"personaName", "profileUrl", "avatar", "avatarMedium", "avatarFull"} {
+			if _, ok := user[key]; !ok {
+				t.Errorf("response missing %q: %s", key, recorder.Body.String())
+			}
+		}
 	}
 }
 

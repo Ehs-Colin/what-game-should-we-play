@@ -3,6 +3,7 @@ package steamapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -33,6 +34,51 @@ func (client *Client) ResolveVanityURL(ctx context.Context, vanityUrl string) (*
 		},
 		func(body []byte) error {
 			return json.Unmarshal(body, &result)
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// GetPlayerSummaries fetches profile data for one or more Steam IDs. Steam
+// accepts up to 100 IDs per call. The returned players list is empty, not an
+// error, when no ID resolves to a profile.
+func (client *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) (*GetPlayerSummariesResponse, error) {
+	normalizedIDs, err := normalizeSteamIDList(steamIDs)
+	if err != nil {
+		return nil, err
+	}
+	joinedIDs := strings.Join(normalizedIDs, ",")
+
+	requestURL, err := url.Parse(ISteamUserURL + "GetPlayerSummaries/v2/")
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse GetPlayerSummaries URL: %v", err)
+	}
+	values := requestURL.Query()
+	values.Add("key", client.steamApiKey)
+	values.Add("steamids", joinedIDs)
+	requestURL.RawQuery = values.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", requestURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create GetPlayerSummaries request: %v", err)
+	}
+
+	var result GetPlayerSummariesResponse
+	err = client.fetch(
+		ctx,
+		"v2:player_summaries:"+joinedIDs,
+		req,
+		func(resp *http.Response) error {
+			return checkStatus(resp, "GetPlayerSummaries")
+		},
+		func(body []byte) error {
+			if err := json.Unmarshal(body, &result); err != nil {
+				return fmt.Errorf("Failed to decode GetPlayerSummaries response: %v", err)
+			}
+			return nil
 		},
 	)
 	if err != nil {
