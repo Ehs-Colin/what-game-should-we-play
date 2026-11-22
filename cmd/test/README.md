@@ -10,7 +10,8 @@ it and dropped/recreated on every start.
 ## Usage
 
 ```sh
-cmd/test/start.sh
+cmd/test/start.sh            # recreate, seed, and create the first user
+cmd/test/start.sh --nouser   # skip creating the first user
 cmd/test/stop.sh
 ```
 
@@ -25,16 +26,31 @@ The database URL is derived from `GOOSE_DBSTRING` (falling back to
 unchanged. The test server gets its own `APP_ORIGIN` for the port it listens on;
 the `APP_ORIGIN` in `.env` still applies to the normal development server.
 
+## First user
+
+After seeding, `start.sh` signs in with the default account
+(`DEFAULT_ADMIN_USERNAME`/`DEFAULT_ADMIN_PASSWORD` from the root `.env`) and
+creates the real account from `cmd/test/.env`:
+
+```sh
+TEST_USER_USERNAME=testuser
+TEST_USER_PASSWORD=test-password-123
+```
+
+`cmd/test/.env` is gitignored. If either value is missing, or `--nouser` is
+passed, no user is created and the default account must create one through the
+UI. Creating a user requires `jq`.
+
 ## Configuration
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `TEST_ENV_PORT` | `3999` | HTTP port for the test server. |
-| `TEST_ENV_APP_ORIGIN` | `http://localhost:$TEST_ENV_PORT` | `APP_ORIGIN` passed to the test server. It must match the URL opened in the browser or POST requests such as login will be rejected. |
-| `TEST_ENV_DB_NAME` | `wgswp_test` | Database name to create and drop. |
-| `TEST_ENV_DIR` | `data/testenv` | PID, log, and built binary location. |
-| `TEST_ENV_BASE_DATABASE_URL` | `GOOSE_DBSTRING`, then `DATABASE_URL` | Admin connection used to create the test database. |
-| `TEST_ENV_DATABASE_URL` | derived | Full URL of the test database, for setups where deriving it is not possible. |
+| Variable                     | Default                               | Purpose                                                                                                                              |
+| ---------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `TEST_ENV_PORT`              | `3999`                                | HTTP port for the test server.                                                                                                       |
+| `TEST_ENV_APP_ORIGIN`        | `http://localhost:$TEST_ENV_PORT`     | `APP_ORIGIN` passed to the test server. It must match the URL opened in the browser or POST requests such as login will be rejected. |
+| `TEST_ENV_DB_NAME`           | `wgswp_test`                          | Database name to create and drop.                                                                                                    |
+| `TEST_ENV_DIR`               | `data/testenv`                        | PID, log, and built binary location.                                                                                                 |
+| `TEST_ENV_BASE_DATABASE_URL` | `GOOSE_DBSTRING`, then `DATABASE_URL` | Admin connection used to create the test database.                                                                                   |
+| `TEST_ENV_DATABASE_URL`      | derived                               | Full URL of the test database, for setups where deriving it is not possible.                                                         |
 
 ## Seeded data
 

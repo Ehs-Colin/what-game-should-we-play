@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Start an isolated test environment: a fresh database, the server, and seed
 # data for reviewing the UI. Stop it with cmd/test/stop.sh.
+#
+# Usage: cmd/test/start.sh [--nouser]
+#
+# After seeding, the first real account is created from TEST_USER_USERNAME and
+# TEST_USER_PASSWORD in cmd/test/.env. Pass --nouser, or leave either value
+# unset, to skip it and keep the default account's forced account creation.
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -13,6 +19,12 @@ if [[ -f .env ]]; then
   . ./.env
 fi
 set +a
+
+# Loaded without export so the credentials are not passed to the server.
+if [[ -f ${script_dir}/.env ]]; then
+  # shellcheck disable=SC1091
+  . "${script_dir}/.env"
+fi
 
 port=${TEST_ENV_PORT:-3999}
 app_origin=${TEST_ENV_APP_ORIGIN:-http://localhost:${port}}
@@ -27,7 +39,26 @@ fail() {
   exit 1
 }
 
-for command in psql curl go; do
+create_user=1
+for arg in "$@"; do
+  case ${arg} in
+    --nouser | --no-user) create_user=0 ;;
+    *) fail "unknown argument: ${arg} (usage: cmd/test/start.sh [--nouser])" ;;
+  esac
+done
+
+test_username=${TEST_USER_USERNAME:-}
+test_password=${TEST_USER_PASSWORD:-}
+if [[ ${create_user} -eq 1 && ( -z ${test_username} || -z ${test_password} ) ]]; then
+  echo "TEST_USER_USERNAME or TEST_USER_PASSWORD is not set in cmd/test/.env; skipping user creation."
+  create_user=0
+fi
+
+required_commands=(psql curl go)
+if [[ ${create_user} -eq 1 ]]; then
+  required_commands+=(jq)
+fi
+for command in "${required_commands[@]}"; do
   command -v "${command}" >/dev/null 2>&1 || fail "${command} is required"
 done
 
@@ -117,8 +148,72 @@ if ! psql "${db_url}" -v ON_ERROR_STOP=1 -q -f "${script_dir}/seed.sql"; then
   fail "seeding failed"
 fi
 
+response_file=${run_dir}/auth-response.json
+cookie_jar=${run_dir}/auth-cookies.txt
+
+# POST a JSON body read from stdin, keeping credentials out of the process
+# list. Prints the HTTP status; the response body is left in response_file.
+api_post() {
+  local path=$1 csrf_token=${2:-}
+  local headers=(-H "Origin: ${app_origin}" -H "Content-Type: application/json")
+  if [[ -n ${csrf_token} ]]; then
+    headers+=(-H "X-CSRF-Token: ${csrf_token}")
+  fi
+  curl -sS --max-time 10 -b "${cookie_jar}" -c "${cookie_jar}" "${headers[@]}" \
+    -o "${response_file}" -w '%{http_code}' --data-binary @- \
+    "http://127.0.0.1:${port}${path}"
+}
+
+# Sign in as the bootstrap default account, then promote it to the real
+# account the same way the create-account page does.
+create_first_user() {
+  local status csrf_token
+  rm -f "${cookie_jar}" "${response_file}"
+
+  [[ -n ${DEFAULT_ADMIN_USERNAME:-} && -n ${DEFAULT_ADMIN_PASSWORD:-} ]] || {
+    echo "DEFAULT_ADMIN_USERNAME and DEFAULT_ADMIN_PASSWORD must be set in .env" >&2
+    return 1
+  }
+
+  status=$(jq -nc --arg username "${DEFAULT_ADMIN_USERNAME}" --arg password "${DEFAULT_ADMIN_PASSWORD}" \
+    '{username: $username, password: $password}' | api_post /api/auth/login) || return 1
+  if [[ ${status} != 200 ]]; then
+    echo "default account login returned HTTP ${status}: $(cat "${response_file}" 2>/dev/null)" >&2
+    return 1
+  fi
+  csrf_token=$(jq -r '.csrfToken // empty' "${response_file}")
+  [[ -n ${csrf_token} ]] || {
+    echo "default account login did not return a CSRF token" >&2
+    return 1
+  }
+
+  status=$(jq -nc --arg defaultPassword "${DEFAULT_ADMIN_PASSWORD}" --arg username "${test_username}" --arg password "${test_password}" \
+    '{defaultPassword: $defaultPassword, username: $username, password: $password}' |
+    api_post /api/auth/account "${csrf_token}") || return 1
+  if [[ ${status} != 201 ]]; then
+    echo "account creation returned HTTP ${status}: $(cat "${response_file}" 2>/dev/null)" >&2
+    return 1
+  fi
+}
+
+if [[ ${create_user} -eq 1 ]]; then
+  echo "Creating user ${test_username} ..."
+  if ! create_first_user; then
+    rm -f "${cookie_jar}" "${response_file}"
+    kill "${server_pid}" 2>/dev/null || true
+    rm -f "${pid_file}"
+    fail "user creation failed"
+  fi
+  rm -f "${cookie_jar}" "${response_file}"
+fi
+
 echo
 echo "Test environment ready: ${app_origin}"
 echo "  database: ${db_name}"
+if [[ ${create_user} -eq 1 ]]; then
+  echo "  user:     ${test_username}"
+else
+  echo "  user:     none (sign in with the default account to create one)"
+fi
 echo "  log:      ${log_file}"
 echo "  stop:     cmd/test/stop.sh"

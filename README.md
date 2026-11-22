@@ -1,4 +1,4 @@
-# Steam Decision Engine
+# Game Picker Utility
 
 > What Game Should We Play?
 
@@ -127,12 +127,12 @@ Run the app on an internal network with no published ports:
 
 ```yaml
 labels:
-  - "traefik.enable=true"
-  - "traefik.http.routers.wgswp.rule=Host(`games.example.com`)"
-  - "traefik.http.routers.wgswp.entrypoints=websecure"
-  - "traefik.http.routers.wgswp.tls.certresolver=letsencrypt"
-  - "traefik.http.services.wgswp.loadbalancer.server.port=3030"
-  - "traefik.http.services.wgswp.loadbalancer.healthcheck.path=/health"
+    - "traefik.enable=true"
+    - "traefik.http.routers.wgswp.rule=Host(`games.example.com`)"
+    - "traefik.http.routers.wgswp.entrypoints=websecure"
+    - "traefik.http.routers.wgswp.tls.certresolver=letsencrypt"
+    - "traefik.http.services.wgswp.loadbalancer.server.port=3030"
+    - "traefik.http.services.wgswp.loadbalancer.healthcheck.path=/health"
 ```
 
 Traefik appends `X-Forwarded-For` by default. If you also use Traefik's
