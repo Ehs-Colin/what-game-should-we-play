@@ -315,6 +315,9 @@ func TestRequireAuthEnforcesCSRF(t *testing.T) {
 		{name: "safe method without token", token: realSessionToken, method: http.MethodGet, target: "/api/dashboard", want: http.StatusNoContent, reached: true},
 		{name: "missing csrf token", token: realSessionToken, method: http.MethodPost, target: "/api/steamuser", want: http.StatusForbidden},
 		{name: "wrong csrf token", token: realSessionToken, method: http.MethodPost, target: "/api/steamuser", want: http.StatusForbidden},
+		{name: "put missing csrf token", token: realSessionToken, method: http.MethodPut, target: "/api/groups/1/members/76561198000000001", want: http.StatusForbidden},
+		{name: "patch missing csrf token", token: realSessionToken, method: http.MethodPatch, target: "/api/groups/1", want: http.StatusForbidden},
+		{name: "delete missing csrf token", token: realSessionToken, method: http.MethodDelete, target: "/api/groups/1", want: http.StatusForbidden},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

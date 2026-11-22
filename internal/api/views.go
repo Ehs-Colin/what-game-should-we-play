@@ -181,6 +181,56 @@ func newSteamUserSummaryView(row dbgen.SearchSteamUsersRow) steamUserSummaryView
 	return view
 }
 
+type groupView struct {
+	GroupID                int64     `json:"groupId"`
+	Name                   string    `json:"name"`
+	MemberCount            int64     `json:"memberCount"`
+	UnavailableMemberCount int64     `json:"unavailableMemberCount"`
+	CreatedAt              time.Time `json:"createdAt"`
+	UpdatedAt              time.Time `json:"updatedAt"`
+}
+
+func newGroupView(group dbgen.SteamUserGroup, counts dbgen.GetGroupCountsRow) groupView {
+	return groupView{
+		GroupID:                group.ID,
+		Name:                   group.Name,
+		MemberCount:            counts.MemberCount,
+		UnavailableMemberCount: counts.UnavailableMemberCount,
+		CreatedAt:              group.CreatedAt,
+		UpdatedAt:              group.UpdatedAt,
+	}
+}
+
+// groupSummaryView is used by group search and by-ids so Common Games can
+// expand and count members without another request.
+type groupSummaryView struct {
+	groupView
+	Members []steamUserLookupView `json:"members"`
+}
+
+func newGroupSummaryView(row dbgen.SearchGroupsRow, members []steamUserLookupView) groupSummaryView {
+	if members == nil {
+		members = []steamUserLookupView{}
+	}
+	return groupSummaryView{
+		groupView: groupView{
+			GroupID:                row.ID,
+			Name:                   row.Name,
+			MemberCount:            row.MemberCount,
+			UnavailableMemberCount: row.UnavailableMemberCount,
+			CreatedAt:              row.CreatedAt,
+			UpdatedAt:              row.UpdatedAt,
+		},
+		Members: members,
+	}
+}
+
+// groupRefView names a group a Steam user belongs to on View User.
+type groupRefView struct {
+	GroupID int64  `json:"groupId"`
+	Name    string `json:"name"`
+}
+
 type importJobView struct {
 	ID                    int64      `json:"id"`
 	SteamID               string     `json:"steamId"`

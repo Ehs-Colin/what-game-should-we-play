@@ -55,7 +55,7 @@ func getRequestId(ctx context.Context) uuid.UUID {
 func validateRequestOrigin(appOrigin string) middleware { //renderer *templates.Renderer
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-			if request.Method != http.MethodPost {
+			if isSafeMethod(request.Method) {
 				next.ServeHTTP(responseWriter, request)
 				return
 			}

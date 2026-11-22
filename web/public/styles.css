@@ -353,9 +353,32 @@ select:disabled {
     margin: 0;
 }
 
+.group-create,
+.user-group-add {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.group-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 1rem;
+}
+
 .section-title {
     margin: 0 0 0.65rem;
     font-size: 1.02rem;
+}
+
+.subsection-title {
+    margin: 1rem 0 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
 }
 
 .details {

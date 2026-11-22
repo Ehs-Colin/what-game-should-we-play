@@ -34,6 +34,7 @@ type steamUserViewResponse struct {
 	Total            int64            `json:"total"`
 	TotalPages       int64            `json:"totalPages"`
 	Apps             []appSummaryView `json:"apps"`
+	Groups           []groupRefView   `json:"groups"`
 }
 
 // SearchSteamUsers returns users whose names contain the query
@@ -207,6 +208,16 @@ func (handler *Handler) GetSteamUserView(responseWriter http.ResponseWriter, req
 		return
 	}
 
+	groupRows, err := handler.apiStore.queries.ListGroupsForSteamUser(ctx, steamUser.SteamID)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	groups := make([]groupRefView, 0, len(groupRows))
+	for _, row := range groupRows {
+		groups = append(groups, groupRefView{GroupID: row.ID, Name: row.Name})
+	}
+
 	response := steamUserViewResponse{
 		SteamUser:        newSteamUserView(steamUser),
 		OwnedAppCount:    ownedAppCount,
@@ -219,6 +230,7 @@ func (handler *Handler) GetSteamUserView(responseWriter http.ResponseWriter, req
 		Total:            total,
 		TotalPages:       totalPages,
 		Apps:             make([]appSummaryView, 0, len(apps)),
+		Groups:           groups,
 	}
 	for _, app := range apps {
 		response.Apps = append(response.Apps, newAppSummaryView(app))

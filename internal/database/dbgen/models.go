@@ -142,6 +142,19 @@ type SteamUserApp struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type SteamUserGroup struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type SteamUserGroupMember struct {
+	GroupID   int64     `json:"group_id"`
+	SteamID   int64     `json:"steam_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type SteamUserWishlist struct {
 	SteamID   int64        `json:"steam_id"`
 	AppID     int32        `json:"app_id"`

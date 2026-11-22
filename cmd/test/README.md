@@ -54,7 +54,8 @@ UI. Creating a user requires `jq`.
 
 ## Seeded data
 
-- Dashboard: 9 users, 63 apps, 1 running import job, 1 queued job.
+- Dashboard: 35 users (9 named plus 26 raid members), 63 apps, 1 running
+  import job, 1 queued job.
 - `SomePlayer`: 34 owned apps (two pages at 25 per page) and 27 wishlist apps.
 - Common games: 20 multiplayer apps with release dates. `SomePlayer` +
   `WishlistOnly` match all 20, so the default limit of 10 hides half.
@@ -73,6 +74,20 @@ UI. Creating a user requires `jq`.
   platform flags for the View User expandable details panel.
 - Two apps named `Counter-Strike` for name/app-ID ordering, an app with no
   name, and an app with no header image.
+- `RaidMember01`–`RaidMember26` (Steam IDs `76561198000001001`–
+  `76561198000001026`): succeeded imports, each owning 2–3 multiplayer apps.
+  They exist to fill groups past the 25-user Common Games limit.
+
+### Groups
+
+| Group           | Members                                                        | Scenario                                                                    |
+| --------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `Friday Night`  | `SomePlayer`, `BobTheBuilder`, `WishlistOnly`                  | Available.                                                                  |
+| `Co-op Crew`    | `BobTheBuilder`, `WishlistOnly`, `PrivateWishlist`, `CaseTwin` | Overlaps `Friday Night`: selecting both counts 5 distinct users, not 7.     |
+| `Not Ready Yet` | `SomePlayer`, `PlayerTwo`                                      | Unavailable, because `PlayerTwo` only has a queued import.                  |
+| `Empty Group`   | none                                                           | Empty. Selectable in Common Games and adds 0 users.                         |
+| `Almost Full`   | `RaidMember01`–`RaidMember23`                                  | Addable alone, but disabled after `Friday Night` is selected (23 + 3 = 26). |
+| `Big Raid`      | `RaidMember01`–`RaidMember26`                                  | Never addable in Common Games (26 > 25).                                    |
 
 The running and queued jobs are inserted after the server starts so the
 background importer does not pick them up. Restarting the server re-enqueues

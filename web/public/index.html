@@ -14,7 +14,11 @@
                 <a href="/" data-route="/">Dashboard</a>
                 <a href="/import" data-route="/import">Import Steam User</a>
                 <a href="/search" data-route="/search">Search Users</a>
+                <a href="/search-groups" data-route="/search-groups"
+                    >Search Groups</a
+                >
                 <a href="/user" data-route="/user">View User</a>
+                <a href="/group" data-route="/group">View Group</a>
                 <a href="/common-games" data-route="/common-games"
                     >Find Common Games</a
                 >
@@ -380,6 +384,95 @@
                 </div>
             </section>
 
+            <section id="view-search-groups" data-view="/search-groups" hidden>
+                <div class="card">
+                    <header class="card__header">
+                        <p class="eyebrow">Search Groups</p>
+                        <h1 tabindex="-1">Find groups of Steam users</h1>
+                        <p class="lede">
+                            Search by any part of a group name, then open a
+                            group to view its members.
+                        </p>
+                    </header>
+
+                    <form id="search-groups-form" class="lookup" novalidate>
+                        <label for="search-groups-name">Group name</label>
+                        <div class="lookup__row">
+                            <input
+                                id="search-groups-name"
+                                name="name"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                placeholder="e.g. Friday Night"
+                                required
+                            />
+                            <button id="search-groups-button" type="submit">
+                                Search
+                            </button>
+                        </div>
+                    </form>
+
+                    <section
+                        id="search-groups-controls"
+                        class="controls"
+                        aria-label="Sort results"
+                        hidden
+                    >
+                        <label>
+                            Sort by
+                            <select id="search-groups-sort">
+                                <option value="name">Name</option>
+                                <option value="members">Member count</option>
+                            </select>
+                        </label>
+                        <label>
+                            Direction
+                            <select id="search-groups-direction">
+                                <option value="asc">Ascending</option>
+                                <option value="desc">Descending</option>
+                            </select>
+                        </label>
+                        <button
+                            id="search-groups-reset"
+                            type="button"
+                            class="button--secondary"
+                        >
+                            Reset
+                        </button>
+                    </section>
+
+                    <p
+                        id="search-groups-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                    <p id="search-groups-count" class="hint" hidden></p>
+
+                    <div
+                        id="search-groups-results-panel"
+                        class="table-scroll"
+                        hidden
+                    >
+                        <table id="search-groups-table" class="app-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Group</th>
+                                    <th scope="col">Status</th>
+                                    <th
+                                        scope="col"
+                                        class="app-expand-heading"
+                                        aria-label="Expand"
+                                    ></th>
+                                </tr>
+                            </thead>
+                            <tbody id="search-groups-results"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
             <section id="view-user" data-view="/user" hidden>
                 <div class="card">
                     <header class="card__header">
@@ -439,6 +532,61 @@
                         </div>
                         <dl id="user-summary-details" class="details"></dl>
                         <p id="user-summary-notice" class="hint" hidden></p>
+                    </section>
+
+                    <section
+                        id="user-groups"
+                        class="panel"
+                        hidden
+                        aria-labelledby="user-groups-title"
+                    >
+                        <h2 id="user-groups-title" class="section-title">
+                            Groups
+                        </h2>
+                        <p id="user-groups-empty" class="hint">
+                            Not in any groups yet.
+                        </p>
+                        <ul id="user-groups-list" class="selected-users"></ul>
+
+                        <form
+                            id="user-group-add-form"
+                            class="lookup user-group-add"
+                            novalidate
+                        >
+                            <label for="user-group-add-name"
+                                >Add to group</label
+                            >
+                            <div class="lookup__row">
+                                <input
+                                    id="user-group-add-name"
+                                    name="name"
+                                    type="text"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    placeholder="e.g. Friday Night"
+                                    required
+                                />
+                                <button
+                                    id="user-group-add-button"
+                                    type="submit"
+                                >
+                                    Search
+                                </button>
+                            </div>
+                            <p class="hint">
+                                Partial, case-insensitive match on group names.
+                            </p>
+                        </form>
+                        <p
+                            id="user-groups-status"
+                            class="status"
+                            role="status"
+                            aria-live="polite"
+                        ></p>
+                        <ul
+                            id="user-group-add-results"
+                            class="result-list"
+                        ></ul>
                     </section>
 
                     <section
@@ -518,6 +666,261 @@
                 </div>
             </section>
 
+            <section id="view-group" data-view="/group" hidden>
+                <div class="card">
+                    <header class="card__header">
+                        <p class="eyebrow">View Group</p>
+                        <h1 tabindex="-1">View a group</h1>
+                        <p class="lede">
+                            Enter an exact group name to see its members.
+                        </p>
+                    </header>
+
+                    <form id="group-form" class="lookup" novalidate>
+                        <label for="group-name">Group name</label>
+                        <div class="lookup__row">
+                            <input
+                                id="group-name"
+                                name="name"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                placeholder="e.g. Friday Night"
+                                required
+                            />
+                            <button id="group-submit" type="submit">
+                                View group
+                            </button>
+                        </div>
+                        <p class="hint">
+                            Exact name match, ignoring case. Use Search Groups
+                            for partial searches.
+                        </p>
+                    </form>
+
+                    <form
+                        id="group-create-form"
+                        class="lookup group-create"
+                        novalidate
+                    >
+                        <label for="group-create-name">Create a group</label>
+                        <div class="lookup__row">
+                            <input
+                                id="group-create-name"
+                                name="name"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                maxlength="64"
+                                placeholder="New group name"
+                                required
+                            />
+                            <button
+                                id="group-create-button"
+                                type="submit"
+                                class="button--secondary"
+                                data-group-mutation
+                            >
+                                Create
+                            </button>
+                        </div>
+                        <p
+                            id="group-create-status"
+                            class="status"
+                            role="status"
+                            aria-live="polite"
+                        ></p>
+                    </form>
+
+                    <p
+                        id="group-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <section
+                        id="group-summary"
+                        class="panel"
+                        hidden
+                        aria-labelledby="group-summary-title"
+                    >
+                        <div class="section-heading">
+                            <h2 id="group-summary-title" class="section-title">
+                                Group
+                            </h2>
+                            <span
+                                id="group-status-badge"
+                                class="badge"
+                                data-status="none"
+                                >Empty</span
+                            >
+                        </div>
+                        <dl id="group-summary-details" class="details"></dl>
+
+                        <div id="group-actions" class="group-actions">
+                            <button
+                                id="group-rename-button"
+                                type="button"
+                                class="button--secondary"
+                                aria-expanded="false"
+                                aria-controls="group-rename-form"
+                                data-group-mutation
+                            >
+                                Rename
+                            </button>
+                            <button
+                                id="group-delete-button"
+                                type="button"
+                                class="button--secondary"
+                                data-group-mutation
+                            >
+                                Delete group
+                            </button>
+                        </div>
+
+                        <form
+                            id="group-rename-form"
+                            class="lookup"
+                            novalidate
+                            hidden
+                        >
+                            <label for="group-rename-name">New name</label>
+                            <div class="lookup__row">
+                                <input
+                                    id="group-rename-name"
+                                    name="name"
+                                    type="text"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    maxlength="64"
+                                    required
+                                />
+                                <button
+                                    id="group-rename-save"
+                                    type="submit"
+                                    data-group-mutation
+                                >
+                                    Save
+                                </button>
+                                <button
+                                    id="group-rename-cancel"
+                                    type="button"
+                                    class="button--secondary"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                            <p
+                                id="group-rename-status"
+                                class="status"
+                                role="status"
+                                aria-live="polite"
+                            ></p>
+                        </form>
+                    </section>
+
+                    <section
+                        id="group-members"
+                        class="panel"
+                        hidden
+                        aria-labelledby="group-members-title"
+                    >
+                        <h2 id="group-members-title" class="section-title">
+                            Members
+                        </h2>
+
+                        <section
+                            id="group-members-controls"
+                            class="controls"
+                            aria-label="Sort members"
+                        >
+                            <label>
+                                Sort by
+                                <select id="group-members-sort">
+                                    <option value="name">Name</option>
+                                    <option value="updated">
+                                        Last updated
+                                    </option>
+                                    <option value="owned">Owned apps</option>
+                                    <option value="wishlist">
+                                        Wishlist apps
+                                    </option>
+                                </select>
+                            </label>
+                            <label>
+                                Direction
+                                <select id="group-members-direction">
+                                    <option value="asc">Ascending</option>
+                                    <option value="desc">Descending</option>
+                                </select>
+                            </label>
+                        </section>
+
+                        <p id="group-members-count" class="hint"></p>
+
+                        <div id="group-members-panel" class="table-scroll">
+                            <table id="group-members-table" class="app-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">User</th>
+                                        <th scope="col">Status</th>
+                                        <th scope="col">Actions</th>
+                                        <th
+                                            scope="col"
+                                            class="app-expand-heading"
+                                            aria-label="Expand"
+                                        ></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="group-member-rows"></tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section
+                        id="group-add-members"
+                        class="panel"
+                        hidden
+                        aria-labelledby="group-add-members-title"
+                    >
+                        <h2 id="group-add-members-title" class="section-title">
+                            Add members
+                        </h2>
+                        <form id="group-add-form" class="lookup" novalidate>
+                            <label for="group-add-name"
+                                >Search Steam users</label
+                            >
+                            <div class="lookup__row">
+                                <input
+                                    id="group-add-name"
+                                    name="name"
+                                    type="text"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    placeholder="e.g. gaben"
+                                    required
+                                />
+                                <button id="group-add-button" type="submit">
+                                    Search
+                                </button>
+                            </div>
+                            <p class="hint">
+                                Partial, case-insensitive match on stored Steam
+                                names.
+                            </p>
+                        </form>
+                        <p
+                            id="group-add-status"
+                            class="status"
+                            role="status"
+                            aria-live="polite"
+                        ></p>
+                        <ul id="group-add-results" class="result-list"></ul>
+                    </section>
+                </div>
+            </section>
+
             <section id="view-common-games" data-view="/common-games" hidden>
                 <div class="card">
                     <header class="card__header">
@@ -537,7 +940,7 @@
                         novalidate
                     >
                         <label for="common-games-search-name"
-                            >Search Steam users</label
+                            >Search users and groups</label
                         >
                         <div class="lookup__row">
                             <input
@@ -557,8 +960,8 @@
                             </button>
                         </div>
                         <p class="hint">
-                            Partial, case-insensitive match on stored Steam
-                            names.
+                            Partial, case-insensitive match on Steam names and
+                            group names.
                         </p>
                     </form>
 
@@ -580,10 +983,20 @@
                         >
                             Search results
                         </h2>
-                        <ul
-                            id="common-games-search-results"
-                            class="result-list"
-                        ></ul>
+                        <div id="common-games-user-results-section" hidden>
+                            <h3 class="subsection-title">Users</h3>
+                            <ul
+                                id="common-games-search-results"
+                                class="result-list"
+                            ></ul>
+                        </div>
+                        <div id="common-games-group-results-section" hidden>
+                            <h3 class="subsection-title">Groups</h3>
+                            <ul
+                                id="common-games-group-results"
+                                class="result-list"
+                            ></ul>
+                        </div>
                     </section>
 
                     <section
@@ -596,7 +1009,7 @@
                                 id="common-games-selected-title"
                                 class="section-title"
                             >
-                                Selected users
+                                Selection
                             </h2>
                             <span
                                 id="common-games-selected-count"
@@ -606,13 +1019,23 @@
                             </span>
                         </div>
                         <p id="common-games-selected-empty" class="hint">
-                            No users selected yet. Search above and add at least
-                            two.
+                            No users or groups selected yet. Search above and
+                            add at least two users.
                         </p>
-                        <ul
-                            id="common-games-selected-list"
-                            class="selected-users"
-                        ></ul>
+                        <div id="common-games-selected-groups-section" hidden>
+                            <h3 class="subsection-title">Selected groups</h3>
+                            <ul
+                                id="common-games-selected-groups"
+                                class="selected-users"
+                            ></ul>
+                        </div>
+                        <div id="common-games-selected-users-section" hidden>
+                            <h3 class="subsection-title">Selected users</h3>
+                            <ul
+                                id="common-games-selected-list"
+                                class="selected-users"
+                            ></ul>
+                        </div>
                         <p
                             id="common-games-selected-hint"
                             class="hint"
@@ -641,7 +1064,7 @@
                         Choose between 1 and 100 games. The API default is 10.
                     </p>
                     <p id="common-games-submit-hint" class="hint">
-                        Select at least 2 users to continue.
+                        Select at least 2 distinct users to continue.
                     </p>
 
                     <p

@@ -70,6 +70,14 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	dynamicMux.HandleFunc("GET /api/steamusers/by-name", apiHandler.GetSteamUserView)
 	dynamicMux.HandleFunc("GET /api/import-jobs/{id}", apiHandler.GetImportJob)
 	dynamicMux.HandleFunc("POST /api/common-games", apiHandler.GetCommonGames)
+	dynamicMux.HandleFunc("POST /api/groups", apiHandler.CreateGroup)
+	dynamicMux.HandleFunc("GET /api/groups/by-name", apiHandler.GetGroupView)
+	dynamicMux.HandleFunc("GET /api/groups/search", apiHandler.SearchGroups)
+	dynamicMux.HandleFunc("GET /api/groups/by-ids", apiHandler.GetGroupsByIDs)
+	dynamicMux.HandleFunc("PATCH /api/groups/{id}", apiHandler.RenameGroup)
+	dynamicMux.HandleFunc("DELETE /api/groups/{id}", apiHandler.DeleteGroup)
+	dynamicMux.HandleFunc("PUT /api/groups/{id}/members/{steamId}", apiHandler.AddGroupMember)
+	dynamicMux.HandleFunc("DELETE /api/groups/{id}/members/{steamId}", apiHandler.RemoveGroupMember)
 
 	// Serve the static front end. The API patterns above are more specific, so
 	// they take precedence over this catch-all. Unknown extensionless paths

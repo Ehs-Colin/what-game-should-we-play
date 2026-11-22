@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -590,6 +591,41 @@ func TestGetSteamUserViewExactMatchAndStringSteamID(t *testing.T) {
 		t.Fatalf("decode steamUser %s: %v", raw["steamUser"], err)
 	}
 	assertJSONString(t, user["steamId"], strconv.FormatInt(testSteamID, 10))
+}
+
+func TestGetSteamUserViewGroups(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	const memberID = int64(1601)
+	const loneID = int64(1602)
+	seedSteamUser(t, env, memberID, "GroupedUser")
+	seedSteamUser(t, env, loneID, "LoneUser")
+	// Inserted out of order to prove the response is sorted by name.
+	charlie := seedGroup(t, env, "Charlie", memberID)
+	alpha := seedGroup(t, env, "Alpha", memberID, loneID)
+	seedGroup(t, env, "Bravo", loneID)
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers/by-name?name=GroupedUser", "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserViewResponse](t, recorder)
+	want := []groupRefView{
+		{GroupID: alpha.ID, Name: "Alpha"},
+		{GroupID: charlie.ID, Name: "Charlie"},
+	}
+	if !reflect.DeepEqual(body.Groups, want) {
+		t.Fatalf("groups = %+v, want %+v", body.Groups, want)
+	}
+}
+
+func TestGetSteamUserViewNoGroupsIsEmptyArray(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	seedSteamUser(t, env, testSteamID, "SomePlayer")
+	seedGroup(t, env, "Someone Else's Group")
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers/by-name?name=SomePlayer", "")
+	raw := decodeRawJSON(t, recorder)
+	if got := string(raw["groups"]); got != "[]" {
+		t.Fatalf("groups = %s, want []", got)
+	}
 }
 
 func TestGetSteamUserViewIncludesAppDetails(t *testing.T) {

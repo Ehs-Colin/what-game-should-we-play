@@ -14,7 +14,9 @@ const ROUTES = new Map([
     ["/", "dashboard"],
     ["/import", "import"],
     ["/search", "search"],
+    ["/search-groups", "searchGroups"],
     ["/user", "user"],
+    ["/group", "group"],
     ["/common-games", "commonGames"],
     ["/login", "login"],
     ["/create-account", "createAccount"],
@@ -24,7 +26,9 @@ const ROUTE_TITLES = {
     dashboard: "Dashboard",
     import: "Import Steam User",
     search: "Search Users",
+    searchGroups: "Search Groups",
     user: "View User",
+    group: "View Group",
     commonGames: "Find Common Games",
     login: "Sign in",
     createAccount: "Create Account",
@@ -100,6 +104,22 @@ const searchCount = document.querySelector("#search-count");
 const searchResultsPanel = document.querySelector("#search-results-panel");
 const searchResults = document.querySelector("#search-results");
 
+const searchGroupsForm = document.querySelector("#search-groups-form");
+const searchGroupsInput = document.querySelector("#search-groups-name");
+const searchGroupsButton = document.querySelector("#search-groups-button");
+const searchGroupsControls = document.querySelector("#search-groups-controls");
+const searchGroupsSort = document.querySelector("#search-groups-sort");
+const searchGroupsDirection = document.querySelector(
+    "#search-groups-direction",
+);
+const searchGroupsReset = document.querySelector("#search-groups-reset");
+const searchGroupsStatus = document.querySelector("#search-groups-status");
+const searchGroupsCount = document.querySelector("#search-groups-count");
+const searchGroupsResultsPanel = document.querySelector(
+    "#search-groups-results-panel",
+);
+const searchGroupsResults = document.querySelector("#search-groups-results");
+
 const userForm = document.querySelector("#user-form");
 const userInput = document.querySelector("#user-name");
 const userStatus = document.querySelector("#user-status");
@@ -117,6 +137,47 @@ const userListCount = document.querySelector("#user-list-count");
 const userPageSize = document.querySelector("#user-page-size");
 const userAppRows = document.querySelector("#user-app-rows");
 const userPagination = document.querySelector("#user-pagination");
+const userGroups = document.querySelector("#user-groups");
+const userGroupsEmpty = document.querySelector("#user-groups-empty");
+const userGroupsList = document.querySelector("#user-groups-list");
+const userGroupsStatus = document.querySelector("#user-groups-status");
+const userGroupAddForm = document.querySelector("#user-group-add-form");
+const userGroupAddInput = document.querySelector("#user-group-add-name");
+const userGroupAddButton = document.querySelector("#user-group-add-button");
+const userGroupAddResults = document.querySelector("#user-group-add-results");
+
+const groupForm = document.querySelector("#group-form");
+const groupInput = document.querySelector("#group-name");
+const groupStatusLine = document.querySelector("#group-status");
+const groupSummary = document.querySelector("#group-summary");
+const groupStatusBadge = document.querySelector("#group-status-badge");
+const groupSummaryDetails = document.querySelector("#group-summary-details");
+const groupMembers = document.querySelector("#group-members");
+const groupMembersControls = document.querySelector("#group-members-controls");
+const groupMembersSort = document.querySelector("#group-members-sort");
+const groupMembersDirection = document.querySelector(
+    "#group-members-direction",
+);
+const groupMembersCount = document.querySelector("#group-members-count");
+const groupMembersPanel = document.querySelector("#group-members-panel");
+const groupMemberRows = document.querySelector("#group-member-rows");
+const groupCreateForm = document.querySelector("#group-create-form");
+const groupCreateInput = document.querySelector("#group-create-name");
+const groupCreateButton = document.querySelector("#group-create-button");
+const groupCreateStatus = document.querySelector("#group-create-status");
+const groupRenameButton = document.querySelector("#group-rename-button");
+const groupDeleteButton = document.querySelector("#group-delete-button");
+const groupRenameForm = document.querySelector("#group-rename-form");
+const groupRenameInput = document.querySelector("#group-rename-name");
+const groupRenameSave = document.querySelector("#group-rename-save");
+const groupRenameCancel = document.querySelector("#group-rename-cancel");
+const groupRenameStatus = document.querySelector("#group-rename-status");
+const groupAddMembers = document.querySelector("#group-add-members");
+const groupAddForm = document.querySelector("#group-add-form");
+const groupAddInput = document.querySelector("#group-add-name");
+const groupAddButton = document.querySelector("#group-add-button");
+const groupAddStatus = document.querySelector("#group-add-status");
+const groupAddResults = document.querySelector("#group-add-results");
 
 const commonGamesSearchForm = document.querySelector(
     "#common-games-search-form",
@@ -133,14 +194,35 @@ const commonGamesSearchStatus = document.querySelector(
 const commonGamesSearchResultsPanel = document.querySelector(
     "#common-games-search-results-panel",
 );
+const commonGamesUserResultsSection = document.querySelector(
+    "#common-games-user-results-section",
+);
 const commonGamesSearchResults = document.querySelector(
     "#common-games-search-results",
+);
+const commonGamesGroupResultsSection = document.querySelector(
+    "#common-games-group-results-section",
+);
+const commonGamesGroupResults = document.querySelector(
+    "#common-games-group-results",
+);
+const commonGamesSelectedPanel = document.querySelector(
+    "#common-games-selected-panel",
 );
 const commonGamesSelectedCount = document.querySelector(
     "#common-games-selected-count",
 );
 const commonGamesSelectedEmpty = document.querySelector(
     "#common-games-selected-empty",
+);
+const commonGamesSelectedGroupsSection = document.querySelector(
+    "#common-games-selected-groups-section",
+);
+const commonGamesSelectedGroups = document.querySelector(
+    "#common-games-selected-groups",
+);
+const commonGamesSelectedUsersSection = document.querySelector(
+    "#common-games-selected-users-section",
 );
 const commonGamesSelectedList = document.querySelector(
     "#common-games-selected-list",
@@ -198,6 +280,16 @@ const SEARCH_SORT_DEFAULT_DIRECTIONS = {
     wishlist: "desc",
 };
 
+let searchGroupsToken = 0;
+let searchGroupsController = null;
+let searchGroupsBusy = false;
+let searchGroups = [];
+
+const GROUP_SORT_DEFAULT_DIRECTIONS = {
+    name: "asc",
+    members: "desc",
+};
+
 const APP_PAGE_SIZES = [25, 50, 100];
 
 let userToken = 0;
@@ -210,6 +302,26 @@ const userState = {
     pages: { owned: 1, wishlist: 1 },
     data: null,
 };
+
+let userGroupSearchToken = 0;
+let userGroupSearchController = null;
+let userGroupSearchResults = [];
+// Only one View User group add/remove runs at a time.
+let userGroupsBusy = false;
+
+let groupToken = 0;
+let groupController = null;
+const groupState = {
+    name: "",
+    data: null,
+};
+// One flag for every group mutation (create, rename, delete, add, remove) so
+// only one runs at a time.
+let groupMutationBusy = false;
+
+let groupAddToken = 0;
+let groupAddController = null;
+let groupAddUsers = [];
 
 let commonGamesSearchToken = 0;
 let commonGamesSearchController = null;
@@ -224,7 +336,11 @@ let commonGamesUsersController = null;
 
 const commonGamesState = {
     selectedUsers: new Map(),
+    // Keyed by String(groupId). Groups stay listed as groups; their members
+    // are expanded into distinct Steam IDs only when counting or submitting.
+    selectedGroups: new Map(),
     searchUsers: [],
+    searchGroups: [],
     results: null,
     submitted: false,
 };
@@ -251,6 +367,22 @@ searchReset.addEventListener("click", () => {
     renderSearchPipeline();
 });
 
+searchGroupsForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void performGroupSearch();
+});
+
+searchGroupsSort.addEventListener("change", () => {
+    searchGroupsDirection.value =
+        GROUP_SORT_DEFAULT_DIRECTIONS[searchGroupsSort.value] ?? "asc";
+    renderGroupSearchResults();
+});
+searchGroupsDirection.addEventListener("change", renderGroupSearchResults);
+searchGroupsReset.addEventListener("click", () => {
+    resetGroupSearchControls();
+    renderGroupSearchResults();
+});
+
 userForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const name = userInput.value.trim();
@@ -262,6 +394,25 @@ userForm.addEventListener("submit", (event) => {
     userState.pages = { owned: 1, wishlist: 1 };
     setActiveTab("owned");
     pushUserURL(name, "owned", 1, userPageSizeFromValue(userPageSize.value));
+});
+
+userGroupAddForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void performUserGroupSearch();
+});
+
+userGroupAddResults.addEventListener("click", (event) => {
+    const target = event.target.closest("button[data-user-group-add-id]");
+    if (target) {
+        void addUserToGroup(target.dataset.userGroupAddId ?? "");
+    }
+});
+
+userGroupsList.addEventListener("click", (event) => {
+    const target = event.target.closest("button[data-user-group-remove-id]");
+    if (target) {
+        void removeUserFromGroup(target.dataset.userGroupRemoveId ?? "");
+    }
 });
 
 tabOwned.addEventListener("click", () => {
@@ -278,6 +429,65 @@ userPageSize.addEventListener("change", () => {
         return;
     }
     pushUserURL(userState.name, userState.list, 1, pageSize);
+});
+
+groupForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    setGroupFormStatus(groupCreateStatus, "");
+    const name = groupInput.value.trim();
+    if (!name) {
+        setGroupStatus("Enter a group name.", "error");
+        groupInput.focus();
+        return;
+    }
+    pushGroupURL(name);
+});
+
+groupMembersSort.addEventListener("change", () => {
+    groupMembersDirection.value =
+        SEARCH_SORT_DEFAULT_DIRECTIONS[groupMembersSort.value] ?? "asc";
+    renderGroupMembers();
+});
+groupMembersDirection.addEventListener("change", renderGroupMembers);
+
+groupCreateForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void createGroup();
+});
+
+groupRenameButton.addEventListener("click", () => {
+    setRenameFormOpen(groupRenameForm.hidden);
+});
+groupRenameCancel.addEventListener("click", () => {
+    setRenameFormOpen(false);
+    groupRenameButton.focus();
+});
+groupRenameForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void renameGroup();
+});
+
+groupDeleteButton.addEventListener("click", () => {
+    void deleteGroup();
+});
+
+groupAddForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void performGroupAddSearch();
+});
+
+groupAddResults.addEventListener("click", (event) => {
+    const target = event.target.closest("button[data-group-add-steam-id]");
+    if (target) {
+        void addGroupMember(target.dataset.groupAddSteamId ?? "");
+    }
+});
+
+groupMemberRows.addEventListener("click", (event) => {
+    const target = event.target.closest("button[data-group-remove-steam-id]");
+    if (target) {
+        void removeGroupMember(target.dataset.groupRemoveSteamId ?? "");
+    }
 });
 
 commonGamesSearchForm.addEventListener("submit", (event) => {
@@ -307,26 +517,42 @@ logoutButton.addEventListener("click", () => {
     void logout();
 });
 
-commonGamesSearchResults.addEventListener("click", (event) => {
-    const target = event.target.closest("button[data-add-steam-id]");
-    if (!target) {
+commonGamesSearchResultsPanel.addEventListener("click", (event) => {
+    const userTarget = event.target.closest("button[data-add-steam-id]");
+    if (userTarget) {
+        const steamID = userTarget.dataset.addSteamId ?? "";
+        const user = commonGamesState.searchUsers.find(
+            (candidate) => String(candidate.steamId) === steamID,
+        );
+        if (user) {
+            addCommonGamesUser(user);
+        }
         return;
     }
-    const steamID = target.dataset.addSteamId ?? "";
-    const user = commonGamesState.searchUsers.find(
-        (candidate) => String(candidate.steamId) === steamID,
-    );
-    if (user) {
-        addCommonGamesUser(user);
+
+    const groupTarget = event.target.closest("button[data-add-group-id]");
+    if (groupTarget) {
+        const groupID = groupTarget.dataset.addGroupId ?? "";
+        const group = commonGamesState.searchGroups.find(
+            (candidate) => String(candidate.groupId) === groupID,
+        );
+        if (group) {
+            addCommonGamesGroup(group);
+        }
     }
 });
 
-commonGamesSelectedList.addEventListener("click", (event) => {
-    const target = event.target.closest("button[data-remove-steam-id]");
-    if (!target) {
+commonGamesSelectedPanel.addEventListener("click", (event) => {
+    const userTarget = event.target.closest("button[data-remove-steam-id]");
+    if (userTarget) {
+        removeCommonGamesUser(userTarget.dataset.removeSteamId ?? "");
         return;
     }
-    removeCommonGamesUser(target.dataset.removeSteamId ?? "");
+
+    const groupTarget = event.target.closest("button[data-remove-group-id]");
+    if (groupTarget) {
+        removeCommonGamesGroup(groupTarget.dataset.removeGroupId ?? "");
+    }
 });
 
 async function search() {
@@ -1017,7 +1243,7 @@ function renderSearchPipeline() {
     const visible = visibleSearchUsers();
 
     searchResults.replaceChildren(
-        ...visible.flatMap((user, index) => buildSearchResultRows(user, index)),
+        ...visible.flatMap((user, index) => buildSteamUserRows(user, index)),
     );
     searchResultsPanel.hidden = visible.length === 0;
 
@@ -1032,14 +1258,22 @@ function renderSearchPipeline() {
 }
 
 function visibleSearchUsers() {
-    const visible = searchUsers.filter(matchesSearchFilters);
-    const direction = searchDirection.value === "desc" ? -1 : 1;
-    const sort = searchSort.value;
+    return sortSteamUsers(
+        searchUsers.filter(matchesSearchFilters),
+        searchSort.value,
+        searchDirection.value,
+    );
+}
 
-    visible.sort((left, right) => {
+// Returns a sorted copy. Ties fall back to name ascending, then Steam ID, so the
+// order is stable regardless of direction.
+function sortSteamUsers(users, sort, direction) {
+    const multiplier = direction === "desc" ? -1 : 1;
+
+    return [...users].sort((left, right) => {
         const primary = compareSearchField(left, right, sort);
         if (primary !== 0) {
-            return primary * direction;
+            return primary * multiplier;
         }
         const byName = compareSearchNames(left, right);
         if (byName !== 0) {
@@ -1047,8 +1281,6 @@ function visibleSearchUsers() {
         }
         return String(left.steamId).localeCompare(String(right.steamId));
     });
-
-    return visible;
 }
 
 function compareSearchField(left, right, field) {
@@ -1126,7 +1358,12 @@ function resetSearchControls() {
     searchWishlist.value = "all";
 }
 
-function buildSearchResultRows(user, index) {
+// Builds the main row and hidden details row for a Steam user, as shown in the
+// Search Users table. options.idPrefix sets the details element id prefix, and
+// options.actionCell, when given, is called with the user and must return a
+// <td> placed before the expand cell.
+function buildSteamUserRows(user, index, options = {}) {
+    const idPrefix = options.idPrefix ?? "search-user-details";
     const row = document.createElement("tr");
     row.className = "app-row";
 
@@ -1173,29 +1410,15 @@ function buildSearchResultRows(user, index) {
     const statusCell = newElement("td");
     statusCell.append(badge(status.label, status.tone));
 
-    const detailsID = `search-user-details-${user.steamId ?? "unknown"}-${index}`;
-    const toggle = newElement("button", "button--secondary app-expand");
-    toggle.type = "button";
-    toggle.setAttribute("aria-expanded", "false");
-    toggle.setAttribute("aria-controls", detailsID);
-    toggle.setAttribute(
-        "aria-label",
-        `Show details for ${user.name ?? "user"}`,
-    );
-
-    const chevron = newElement("span", "app-expand__chevron");
-    chevron.setAttribute("aria-hidden", "true");
-    toggle.append(chevron);
-
-    const expandCell = newElement("td", "app-expand-cell");
-    expandCell.append(toggle);
+    const detailsID = `${idPrefix}-${user.steamId ?? "unknown"}-${index}`;
+    const actionCell = options.actionCell ? options.actionCell(user) : null;
 
     const detailsRow = document.createElement("tr");
     detailsRow.className = "app-details-row";
     detailsRow.hidden = true;
 
     const detailsCell = newElement("td", "app-details-cell");
-    detailsCell.colSpan = 3;
+    detailsCell.colSpan = actionCell ? 4 : 3;
 
     const details = newElement("div", "app-details");
     details.id = detailsID;
@@ -1203,21 +1426,49 @@ function buildSearchResultRows(user, index) {
     detailsCell.append(details);
     detailsRow.append(detailsCell);
 
+    const expandCell = buildExpandToggle(
+        user.name ?? "user",
+        detailsID,
+        detailsRow,
+    );
+
+    row.append(nameCell, statusCell);
+    if (actionCell) {
+        row.append(actionCell);
+    }
+    row.append(expandCell);
+
+    return [row, detailsRow];
+}
+
+// Returns the expand cell for a table row: a chevron button that shows or hides
+// detailsRow and keeps aria-expanded and the label in sync.
+function buildExpandToggle(label, detailsID, detailsRow) {
+    const toggle = newElement("button", "button--secondary app-expand");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", detailsID);
+    toggle.setAttribute("aria-label", `Show details for ${label}`);
+
+    const chevron = newElement("span", "app-expand__chevron");
+    chevron.setAttribute("aria-hidden", "true");
+    toggle.append(chevron);
+
     toggle.addEventListener("click", () => {
         const expanded = toggle.getAttribute("aria-expanded") === "true";
         toggle.setAttribute("aria-expanded", String(!expanded));
         toggle.setAttribute(
             "aria-label",
             expanded
-                ? `Show details for ${user.name ?? "user"}`
-                : `Hide details for ${user.name ?? "user"}`,
+                ? `Show details for ${label}`
+                : `Hide details for ${label}`,
         );
         detailsRow.hidden = expanded;
     });
 
-    row.append(nameCell, statusCell, expandCell);
-
-    return [row, detailsRow];
+    const expandCell = newElement("td", "app-expand-cell");
+    expandCell.append(toggle);
+    return expandCell;
 }
 
 function buildSearchResultDetails(user) {
@@ -1295,6 +1546,835 @@ function leaveSearch() {
     }
 }
 
+async function performGroupSearch() {
+    const token = ++searchGroupsToken;
+    searchGroupsController?.abort();
+    const controller = new AbortController();
+    searchGroupsController = controller;
+
+    const name = searchGroupsInput.value.trim();
+    if (!name) {
+        clearGroupSearchResults();
+        setGroupSearchStatus("Enter a group name.", "error");
+        searchGroupsInput.focus();
+        return;
+    }
+
+    setGroupSearchBusy(true);
+    setGroupSearchStatus(`Searching for “${name}”…`);
+
+    try {
+        const response = await apiFetch(
+            `/api/groups/search?name=${encodeURIComponent(name)}`,
+            {
+                headers: { Accept: "application/json" },
+                signal: controller.signal,
+            },
+        );
+        if (!isGroupSearchCurrent(token)) {
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (!isGroupSearchCurrent(token)) {
+            return;
+        }
+
+        searchGroups = Array.isArray(body.groups) ? body.groups : [];
+        resetGroupSearchControls();
+
+        if (searchGroups.length === 0) {
+            clearGroupSearchResults();
+            setGroupSearchStatus(`No groups match “${name}”.`);
+            return;
+        }
+
+        setGroupSearchStatus("");
+        renderGroupSearchResults();
+    } catch (error) {
+        if (isAbort(error) || !isGroupSearchCurrent(token)) {
+            return;
+        }
+        clearGroupSearchResults();
+        setGroupSearchStatus(errorMessage(error), "error");
+    } finally {
+        if (isGroupSearchCurrent(token)) {
+            setGroupSearchBusy(false);
+            searchGroupsController = null;
+        }
+    }
+}
+
+function clearGroupSearchResults() {
+    searchGroups = [];
+    searchGroupsResults.replaceChildren();
+    searchGroupsResultsPanel.hidden = true;
+    searchGroupsControls.hidden = true;
+    searchGroupsCount.textContent = "";
+    searchGroupsCount.hidden = true;
+}
+
+function renderGroupSearchResults() {
+    if (searchGroups.length === 0) {
+        clearGroupSearchResults();
+        return;
+    }
+
+    const visible = sortGroups(
+        searchGroups,
+        searchGroupsSort.value,
+        searchGroupsDirection.value,
+    );
+    searchGroupsResults.replaceChildren(
+        ...visible.flatMap((group, index) => buildGroupRows(group, index)),
+    );
+    searchGroupsControls.hidden = false;
+    searchGroupsResultsPanel.hidden = false;
+    searchGroupsCount.textContent =
+        visible.length === 1
+            ? "1 group"
+            : `${formatCount(visible.length)} groups`;
+    searchGroupsCount.hidden = false;
+}
+
+// Returns a sorted copy. Ties fall back to name ascending, then group ID.
+function sortGroups(groups, sort, direction) {
+    const multiplier = direction === "desc" ? -1 : 1;
+
+    return [...groups].sort((left, right) => {
+        const primary =
+            sort === "members"
+                ? countValue(left.memberCount) - countValue(right.memberCount)
+                : compareSearchNames(left, right);
+        if (primary !== 0) {
+            return primary * multiplier;
+        }
+        const byName = compareSearchNames(left, right);
+        if (byName !== 0) {
+            return byName;
+        }
+        return countValue(left.groupId) - countValue(right.groupId);
+    });
+}
+
+function resetGroupSearchControls() {
+    searchGroupsSort.value = "name";
+    searchGroupsDirection.value = GROUP_SORT_DEFAULT_DIRECTIONS.name;
+}
+
+// The status rule for a group, shared by every page that shows one.
+function groupStatus(group) {
+    if (countValue(group.memberCount) === 0) {
+        return { label: "Empty", tone: "none" };
+    }
+    if (countValue(group.unavailableMemberCount) > 0) {
+        return { label: "Unavailable", tone: "failed" };
+    }
+    return { label: "Available", tone: "succeeded" };
+}
+
+function buildGroupURL(name) {
+    return `/group?name=${encodeURIComponent(name ?? "")}`;
+}
+
+function buildGroupRows(group, index) {
+    const row = document.createElement("tr");
+    row.className = "app-row";
+
+    const nameCell = newElement("td", "app-cell");
+    const body = newElement("div", "app-cell__body");
+    const info = newElement("div", "app-cell__info");
+    const nameLink = newElement("a", "app-cell__name", group.name ?? "");
+    nameLink.href = buildGroupURL(group.name);
+    nameLink.dataset.route = "/group";
+    info.append(
+        nameLink,
+        newElement(
+            "p",
+            "app-cell__meta",
+            `Members: ${formatCount(group.memberCount)}`,
+        ),
+    );
+    body.append(info);
+    nameCell.append(body);
+
+    const status = groupStatus(group);
+    const statusCell = newElement("td");
+    statusCell.append(badge(status.label, status.tone));
+
+    const detailsID = `search-group-details-${group.groupId ?? "unknown"}-${index}`;
+    const detailsRow = document.createElement("tr");
+    detailsRow.className = "app-details-row";
+    detailsRow.hidden = true;
+
+    const detailsCell = newElement("td", "app-details-cell");
+    detailsCell.colSpan = 3;
+
+    const details = newElement("div", "app-details");
+    details.id = detailsID;
+    const list = newElement("dl", "details app-details__list");
+    list.append(
+        detailRow("Group name", group.name ?? ""),
+        detailRow("Group ID", String(group.groupId ?? "")),
+        detailRow("Member count", formatCount(group.memberCount)),
+    );
+    details.append(list);
+    detailsCell.append(details);
+    detailsRow.append(detailsCell);
+
+    const expandCell = buildExpandToggle(
+        group.name ?? "group",
+        detailsID,
+        detailsRow,
+    );
+
+    row.append(nameCell, statusCell, expandCell);
+    return [row, detailsRow];
+}
+
+function setGroupSearchStatus(message, state) {
+    searchGroupsStatus.textContent = message;
+    if (state) {
+        searchGroupsStatus.dataset.state = state;
+    } else {
+        delete searchGroupsStatus.dataset.state;
+    }
+}
+
+function setGroupSearchBusy(busy) {
+    searchGroupsBusy = busy;
+    searchGroupsInput.disabled = busy;
+    searchGroupsButton.disabled = busy;
+}
+
+function isGroupSearchCurrent(token) {
+    return token === searchGroupsToken;
+}
+
+function leaveSearchGroups() {
+    searchGroupsController?.abort();
+    if (searchGroupsBusy) {
+        setGroupSearchBusy(false);
+        setGroupSearchStatus("");
+    }
+}
+
+function enterGroup() {
+    const parsed = parseGroupQuery(location.search);
+
+    groupState.name = parsed.name;
+    groupState.data = null;
+
+    groupController?.abort();
+    groupController = null;
+    groupToken += 1;
+
+    groupInput.value = parsed.name;
+    resetGroupMemberControls();
+    resetGroupManagement();
+    setGroupFormStatus(groupCreateStatus, "");
+    setGroupLoading(false);
+    clearGroupView();
+
+    if (!parsed.name) {
+        setGroupStatus("");
+        return;
+    }
+
+    syncGroupURL();
+    void loadGroup();
+}
+
+function leaveGroup() {
+    groupController?.abort();
+    groupController = null;
+    groupToken += 1;
+    groupAddController?.abort();
+    groupAddController = null;
+    groupAddToken += 1;
+}
+
+function parseGroupQuery(search) {
+    const params = new URLSearchParams(search);
+    return { name: (params.get("name") ?? "").trim() };
+}
+
+function pushGroupURL(name) {
+    const url = buildGroupURL(name);
+    if (url !== location.pathname + location.search + location.hash) {
+        history.pushState({}, "", url);
+        currentHref = url;
+    }
+
+    groupState.name = name;
+    groupInput.value = name;
+    resetGroupMemberControls();
+    resetGroupManagement();
+    void loadGroup();
+}
+
+// Rewrites the URL in place, e.g. to the stored casing of the group name.
+function syncGroupURL() {
+    if (!groupState.name) {
+        return;
+    }
+
+    const url = buildGroupURL(groupState.name);
+    if (url !== location.pathname + location.search + location.hash) {
+        history.replaceState({}, "", url);
+        currentHref = url;
+    }
+}
+
+async function loadGroup() {
+    const token = ++groupToken;
+    groupController?.abort();
+    const controller = new AbortController();
+    groupController = controller;
+
+    if (!groupState.name) {
+        setGroupLoading(false);
+        clearGroupView();
+        setGroupStatus("");
+        groupController = null;
+        return;
+    }
+
+    setGroupLoading(true);
+    setGroupStatus(`Loading “${groupState.name}”…`);
+
+    try {
+        const response = await apiFetch(
+            `/api/groups/by-name?name=${encodeURIComponent(groupState.name)}`,
+            {
+                headers: { Accept: "application/json" },
+                signal: controller.signal,
+            },
+        );
+        if (!isGroupCurrent(token)) {
+            return;
+        }
+
+        if (response.status === 404) {
+            clearGroupView();
+            setGroupLoading(false);
+            showGroupNotFound(groupState.name);
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (!isGroupCurrent(token)) {
+            return;
+        }
+
+        applyGroupResponse(body);
+        setGroupStatus("");
+    } catch (error) {
+        if (isAbort(error) || !isGroupCurrent(token)) {
+            return;
+        }
+        setGroupStatus(errorMessage(error), "error");
+    } finally {
+        if (isGroupCurrent(token)) {
+            setGroupLoading(false);
+            groupController = null;
+        }
+    }
+}
+
+function applyGroupResponse(body) {
+    const group = body?.group;
+    if (!group) {
+        throw new Error("The server did not return a group.");
+    }
+
+    groupState.data = {
+        group,
+        members: Array.isArray(body.members) ? body.members : [],
+    };
+
+    if (typeof group.name === "string" && group.name !== "") {
+        groupState.name = group.name;
+        groupInput.value = group.name;
+    }
+
+    renderGroupSummary(group);
+    renderGroupMembers();
+    groupAddMembers.hidden = false;
+    renderGroupAddResults();
+    syncGroupURL();
+}
+
+function renderGroupSummary(group) {
+    groupSummary.hidden = false;
+    const status = groupStatus(group);
+    groupStatusBadge.textContent = status.label;
+    groupStatusBadge.dataset.status = status.tone;
+
+    groupSummaryDetails.replaceChildren(
+        detailRow("Group name", group.name ?? ""),
+        detailRow("Group ID", String(group.groupId ?? "")),
+        detailRow("Members", formatCount(group.memberCount ?? 0)),
+    );
+}
+
+// Re-renders the member table from groupState without refetching, so sort
+// changes are instant.
+function renderGroupMembers() {
+    const data = groupState.data;
+    if (!data) {
+        return;
+    }
+
+    groupMembers.hidden = false;
+    const members = data.members;
+    if (members.length === 0) {
+        groupMembersControls.hidden = true;
+        groupMembersPanel.hidden = true;
+        groupMemberRows.replaceChildren();
+        groupMembersCount.textContent = "No members yet.";
+        return;
+    }
+
+    groupMembersControls.hidden = false;
+    groupMembersPanel.hidden = false;
+    groupMembersCount.textContent =
+        members.length === 1
+            ? "1 member"
+            : `${formatCount(members.length)} members`;
+
+    const sorted = sortSteamUsers(
+        members,
+        groupMembersSort.value,
+        groupMembersDirection.value,
+    );
+    groupMemberRows.replaceChildren(
+        ...sorted.flatMap((user, index) =>
+            buildSteamUserRows(user, index, {
+                idPrefix: "group-member-details",
+                actionCell: buildGroupMemberActionCell,
+            }),
+        ),
+    );
+}
+
+function buildGroupMemberActionCell(user) {
+    const cell = newElement("td");
+    const button = newElement("button", "button--secondary", "Remove");
+    button.type = "button";
+    button.dataset.groupRemoveSteamId = String(user.steamId ?? "");
+    button.disabled = groupMutationBusy;
+    button.setAttribute(
+        "aria-label",
+        `Remove ${user.name ?? "user"} from ${groupState.data?.group?.name ?? "group"}`,
+    );
+    cell.append(button);
+    return cell;
+}
+
+function resetGroupMemberControls() {
+    groupMembersSort.value = "name";
+    groupMembersDirection.value = SEARCH_SORT_DEFAULT_DIRECTIONS.name;
+}
+
+function clearGroupView() {
+    groupState.data = null;
+    groupSummary.hidden = true;
+    groupMembers.hidden = true;
+    groupAddMembers.hidden = true;
+    groupSummaryDetails.replaceChildren();
+    groupMembersCount.textContent = "";
+    groupMemberRows.replaceChildren();
+}
+
+function setGroupLoading(loading) {
+    groupSummary.setAttribute("aria-busy", String(loading));
+    groupMembers.setAttribute("aria-busy", String(loading));
+}
+
+function setGroupStatus(message, state) {
+    groupStatusLine.replaceChildren();
+    groupStatusLine.textContent = message;
+    if (state) {
+        groupStatusLine.dataset.state = state;
+    } else {
+        delete groupStatusLine.dataset.state;
+    }
+}
+
+function showGroupNotFound(name) {
+    groupStatusLine.replaceChildren();
+    groupStatusLine.dataset.state = "error";
+    groupStatusLine.append(
+        document.createTextNode(`No group named “${name}”. `),
+    );
+
+    const link = newElement("a", "", "Search Groups");
+    link.href = "/search-groups";
+    link.dataset.route = "/search-groups";
+    groupStatusLine.append(link);
+}
+
+function isGroupCurrent(token) {
+    return token === groupToken;
+}
+
+// Clears per-group management UI: the rename form and the add-member search.
+function resetGroupManagement() {
+    setRenameFormOpen(false);
+    groupAddController?.abort();
+    groupAddController = null;
+    groupAddToken += 1;
+    groupAddUsers = [];
+    groupAddInput.value = "";
+    groupAddInput.disabled = false;
+    groupAddButton.disabled = false;
+    groupAddResults.replaceChildren();
+    setGroupFormStatus(groupAddStatus, "");
+}
+
+function setGroupFormStatus(element, message, state) {
+    element.textContent = message;
+    if (state) {
+        element.dataset.state = state;
+    } else {
+        delete element.dataset.state;
+    }
+}
+
+function setGroupMutationBusy(busy) {
+    groupMutationBusy = busy;
+    groupCreateButton.disabled = busy;
+    groupRenameButton.disabled = busy;
+    groupDeleteButton.disabled = busy;
+    groupRenameSave.disabled = busy;
+    for (const button of groupMemberRows.querySelectorAll(
+        "button[data-group-remove-steam-id]",
+    )) {
+        button.disabled = busy;
+    }
+    // Add buttons also depend on membership, so rebuild them.
+    renderGroupAddResults();
+}
+
+function currentGroup() {
+    return groupState.data?.group ?? null;
+}
+
+async function createGroup() {
+    if (groupMutationBusy) {
+        return;
+    }
+    const name = groupCreateInput.value.trim();
+    if (!name) {
+        setGroupFormStatus(groupCreateStatus, "Enter a group name.", "error");
+        groupCreateInput.focus();
+        return;
+    }
+
+    setGroupMutationBusy(true);
+    setGroupFormStatus(groupCreateStatus, `Creating “${name}”…`);
+    try {
+        const response = await apiFetch("/api/groups", {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ name }),
+        });
+        if (!response.ok) {
+            throw await readError(response);
+        }
+        const body = await response.json();
+        const createdName = body?.group?.name ?? name;
+
+        groupCreateInput.value = "";
+        pushGroupURL(createdName);
+        setGroupFormStatus(
+            groupCreateStatus,
+            `Created group “${createdName}”.`,
+        );
+    } catch (error) {
+        setGroupFormStatus(groupCreateStatus, errorMessage(error), "error");
+    } finally {
+        setGroupMutationBusy(false);
+    }
+}
+
+function setRenameFormOpen(open) {
+    groupRenameForm.hidden = !open;
+    groupRenameButton.setAttribute("aria-expanded", String(open));
+    setGroupFormStatus(groupRenameStatus, "");
+    if (open) {
+        groupRenameInput.value = currentGroup()?.name ?? "";
+        groupRenameInput.focus();
+        groupRenameInput.select();
+    }
+}
+
+async function renameGroup() {
+    const group = currentGroup();
+    if (groupMutationBusy || !group) {
+        return;
+    }
+    const name = groupRenameInput.value.trim();
+    if (!name) {
+        setGroupFormStatus(groupRenameStatus, "Enter a group name.", "error");
+        groupRenameInput.focus();
+        return;
+    }
+
+    setGroupMutationBusy(true);
+    setGroupFormStatus(groupRenameStatus, "Saving…");
+    try {
+        const response = await apiFetch(
+            `/api/groups/${encodeURIComponent(group.groupId)}`,
+            {
+                method: "PATCH",
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ name }),
+            },
+        );
+        if (!response.ok) {
+            throw await readError(response);
+        }
+        const body = await response.json();
+        const renamed = body?.group;
+        if (!renamed || !groupState.data) {
+            throw new Error("The server did not return a group.");
+        }
+
+        groupState.data.group = renamed;
+        groupState.name = renamed.name;
+        groupInput.value = renamed.name;
+        syncGroupURL();
+        renderGroupSummary(renamed);
+        setRenameFormOpen(false);
+        setGroupStatus(`Renamed group to “${renamed.name}”.`);
+        groupRenameButton.focus();
+    } catch (error) {
+        setGroupFormStatus(groupRenameStatus, errorMessage(error), "error");
+    } finally {
+        setGroupMutationBusy(false);
+        // The member Remove labels include the group name.
+        renderGroupMembers();
+    }
+}
+
+async function deleteGroup() {
+    const group = currentGroup();
+    if (groupMutationBusy || !group) {
+        return;
+    }
+    if (!confirm(`Delete group “${group.name}”? This can't be undone.`)) {
+        return;
+    }
+
+    setGroupMutationBusy(true);
+    setGroupStatus(`Deleting “${group.name}”…`);
+    try {
+        const response = await apiFetch(
+            `/api/groups/${encodeURIComponent(group.groupId)}`,
+            { method: "DELETE" },
+        );
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        history.pushState({}, "", "/search-groups");
+        renderRoute();
+        // Earlier results may still list the deleted group.
+        clearGroupSearchResults();
+        setGroupSearchStatus(`Deleted group “${group.name}”.`);
+    } catch (error) {
+        setGroupStatus(errorMessage(error), "error");
+    } finally {
+        setGroupMutationBusy(false);
+    }
+}
+
+async function performGroupAddSearch() {
+    const token = ++groupAddToken;
+    groupAddController?.abort();
+    const controller = new AbortController();
+    groupAddController = controller;
+
+    const name = groupAddInput.value.trim();
+    if (!name) {
+        groupAddUsers = [];
+        renderGroupAddResults();
+        setGroupFormStatus(groupAddStatus, "Enter a Steam name.", "error");
+        groupAddInput.focus();
+        return;
+    }
+
+    groupAddInput.disabled = true;
+    groupAddButton.disabled = true;
+    setGroupFormStatus(groupAddStatus, `Searching for “${name}”…`);
+
+    try {
+        const response = await apiFetch(
+            `/api/steamusers/search?name=${encodeURIComponent(name)}`,
+            {
+                headers: { Accept: "application/json" },
+                signal: controller.signal,
+            },
+        );
+        if (token !== groupAddToken) {
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+        const body = await response.json();
+        if (token !== groupAddToken) {
+            return;
+        }
+
+        groupAddUsers = Array.isArray(body.steamUsers) ? body.steamUsers : [];
+        renderGroupAddResults();
+        setGroupFormStatus(
+            groupAddStatus,
+            groupAddUsers.length === 0 ? `No users match “${name}”.` : "",
+        );
+    } catch (error) {
+        if (isAbort(error) || token !== groupAddToken) {
+            return;
+        }
+        groupAddUsers = [];
+        renderGroupAddResults();
+        setGroupFormStatus(groupAddStatus, errorMessage(error), "error");
+    } finally {
+        if (token === groupAddToken) {
+            groupAddInput.disabled = false;
+            groupAddButton.disabled = false;
+            groupAddController = null;
+        }
+    }
+}
+
+function groupMemberIDs() {
+    return new Set(
+        (groupState.data?.members ?? []).map((member) =>
+            String(member.steamId ?? ""),
+        ),
+    );
+}
+
+function renderGroupAddResults() {
+    const memberIDs = groupMemberIDs();
+    groupAddResults.replaceChildren(
+        ...groupAddUsers.map((user) => buildGroupAddResult(user, memberIDs)),
+    );
+}
+
+function buildGroupAddResult(user, memberIDs) {
+    const item = newElement("li", "result");
+    const main = newElement("div", "result__main");
+    const status = importStatus(user.latestImportStatus ?? null);
+
+    const heading = newElement("div", "result__heading");
+    heading.append(
+        newElement("p", "result__name", user.name ?? ""),
+        badge(status.label, status.tone),
+    );
+    main.append(
+        heading,
+        newElement("p", "result__id", `Steam ID ${user.steamId ?? ""}`),
+    );
+
+    const steamID = String(user.steamId ?? "");
+    const member = memberIDs.has(steamID);
+    const action = newElement(
+        "button",
+        "result__link",
+        member ? "Added" : "Add",
+    );
+    action.type = "button";
+    action.dataset.groupAddSteamId = steamID;
+    action.disabled = member || groupMutationBusy;
+    if (!member) {
+        action.setAttribute(
+            "aria-label",
+            `Add ${user.name ?? "user"} to ${currentGroup()?.name ?? "group"}`,
+        );
+    }
+
+    item.append(main, action);
+    return item;
+}
+
+async function addGroupMember(steamID) {
+    const group = currentGroup();
+    const user = groupAddUsers.find(
+        (candidate) => String(candidate.steamId ?? "") === steamID,
+    );
+    if (groupMutationBusy || !group || !user || groupMemberIDs().has(steamID)) {
+        return;
+    }
+
+    setGroupMutationBusy(true);
+    setGroupFormStatus(groupAddStatus, `Adding “${user.name}”…`);
+    try {
+        const response = await apiFetch(
+            `/api/groups/${encodeURIComponent(group.groupId)}/members/${encodeURIComponent(steamID)}`,
+            { method: "PUT" },
+        );
+        if (!response.ok) {
+            throw await readError(response);
+        }
+        await loadGroup();
+        setGroupFormStatus(
+            groupAddStatus,
+            `Added “${user.name}” to “${currentGroup()?.name ?? group.name}”.`,
+        );
+    } catch (error) {
+        setGroupFormStatus(groupAddStatus, errorMessage(error), "error");
+    } finally {
+        setGroupMutationBusy(false);
+    }
+}
+
+async function removeGroupMember(steamID) {
+    const group = currentGroup();
+    const member = (groupState.data?.members ?? []).find(
+        (candidate) => String(candidate.steamId ?? "") === steamID,
+    );
+    if (groupMutationBusy || !group || !member) {
+        return;
+    }
+
+    setGroupMutationBusy(true);
+    setGroupStatus(`Removing “${member.name}”…`);
+    try {
+        const response = await apiFetch(
+            `/api/groups/${encodeURIComponent(group.groupId)}/members/${encodeURIComponent(steamID)}`,
+            { method: "DELETE" },
+        );
+        if (!response.ok) {
+            throw await readError(response);
+        }
+        await loadGroup();
+        setGroupStatus(
+            `Removed “${member.name}” from “${currentGroup()?.name ?? group.name}”.`,
+        );
+    } catch (error) {
+        setGroupStatus(errorMessage(error), "error");
+    } finally {
+        setGroupMutationBusy(false);
+    }
+}
+
 function enterUser() {
     const parsed = parseUserQuery(location.search);
 
@@ -1315,6 +2395,7 @@ function enterUser() {
     setActiveTab(parsed.list);
     setUserLoading(false);
     clearUserView();
+    resetUserGroupSearch();
 
     if (!parsed.name) {
         setUserStatus("");
@@ -1329,6 +2410,7 @@ function leaveUser() {
     userController?.abort();
     userController = null;
     userToken += 1;
+    resetUserGroupSearch();
 }
 
 function parseUserQuery(search) {
@@ -1512,8 +2594,246 @@ function applyUserResponse(body) {
     setActiveTab(userState.list);
 
     renderUserSummary(body);
+    renderUserGroups(body);
     renderUserApps(body);
     syncUserURL();
+}
+
+function userGroupIDs() {
+    const groups = Array.isArray(userState.data?.groups)
+        ? userState.data.groups
+        : [];
+    return new Set(groups.map((group) => String(group.groupId ?? "")));
+}
+
+function renderUserGroups(data) {
+    const groups = Array.isArray(data?.groups) ? data.groups : [];
+    userGroups.hidden = false;
+    userGroupsEmpty.hidden = groups.length > 0;
+    userGroupsList.replaceChildren(...groups.map(buildUserGroupItem));
+    renderUserGroupSearchResults();
+}
+
+function buildUserGroupItem(group) {
+    const userName = userState.data?.steamUser?.name ?? "user";
+    const item = newElement("li", "selected-user");
+    const main = newElement("div", "selected-user__main");
+    const link = newElement("a", "selected-user__name", group.name ?? "");
+    link.href = buildGroupURL(group.name);
+    link.dataset.route = "/group";
+    main.append(link);
+
+    const remove = newElement(
+        "button",
+        "button--secondary selected-user__remove",
+        "Remove",
+    );
+    remove.type = "button";
+    remove.dataset.userGroupRemoveId = String(group.groupId ?? "");
+    remove.disabled = userGroupsBusy;
+    remove.setAttribute(
+        "aria-label",
+        `Remove ${userName} from ${group.name ?? "group"}`,
+    );
+    item.append(main, remove);
+    return item;
+}
+
+function resetUserGroupSearch() {
+    userGroupSearchController?.abort();
+    userGroupSearchController = null;
+    userGroupSearchToken += 1;
+    userGroupSearchResults = [];
+    userGroupAddInput.value = "";
+    userGroupAddInput.disabled = false;
+    userGroupAddButton.disabled = false;
+    userGroupAddResults.replaceChildren();
+    setGroupFormStatus(userGroupsStatus, "");
+}
+
+async function performUserGroupSearch() {
+    const token = ++userGroupSearchToken;
+    userGroupSearchController?.abort();
+    const controller = new AbortController();
+    userGroupSearchController = controller;
+
+    const name = userGroupAddInput.value.trim();
+    if (!name) {
+        userGroupSearchResults = [];
+        renderUserGroupSearchResults();
+        setGroupFormStatus(userGroupsStatus, "Enter a group name.", "error");
+        userGroupAddInput.focus();
+        return;
+    }
+
+    userGroupAddInput.disabled = true;
+    userGroupAddButton.disabled = true;
+    setGroupFormStatus(userGroupsStatus, `Searching for “${name}”…`);
+
+    try {
+        const response = await apiFetch(
+            `/api/groups/search?name=${encodeURIComponent(name)}`,
+            {
+                headers: { Accept: "application/json" },
+                signal: controller.signal,
+            },
+        );
+        if (token !== userGroupSearchToken) {
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+        const body = await response.json();
+        if (token !== userGroupSearchToken) {
+            return;
+        }
+
+        userGroupSearchResults = Array.isArray(body.groups) ? body.groups : [];
+        renderUserGroupSearchResults();
+        setGroupFormStatus(
+            userGroupsStatus,
+            userGroupSearchResults.length === 0
+                ? `No groups match “${name}”.`
+                : "",
+        );
+    } catch (error) {
+        if (isAbort(error) || token !== userGroupSearchToken) {
+            return;
+        }
+        userGroupSearchResults = [];
+        renderUserGroupSearchResults();
+        setGroupFormStatus(userGroupsStatus, errorMessage(error), "error");
+    } finally {
+        if (token === userGroupSearchToken) {
+            userGroupAddInput.disabled = false;
+            userGroupAddButton.disabled = false;
+            userGroupSearchController = null;
+        }
+    }
+}
+
+function renderUserGroupSearchResults() {
+    const memberOf = userGroupIDs();
+    userGroupAddResults.replaceChildren(
+        ...userGroupSearchResults.map((group) =>
+            buildUserGroupSearchResult(group, memberOf),
+        ),
+    );
+}
+
+// Member counts and availability aren't shown: they'd go stale as soon as
+// this page adds or removes the user.
+function buildUserGroupSearchResult(group, memberOf) {
+    const item = newElement("li", "result");
+    const main = newElement("div", "result__main");
+    const heading = newElement("div", "result__heading");
+    heading.append(newElement("p", "result__name", group.name ?? ""));
+    main.append(heading);
+
+    const groupID = String(group.groupId ?? "");
+    const member = memberOf.has(groupID);
+    const action = newElement(
+        "button",
+        "result__link",
+        member ? "Added" : "Add",
+    );
+    action.type = "button";
+    action.dataset.userGroupAddId = groupID;
+    action.disabled = member || userGroupsBusy;
+    if (!member) {
+        action.setAttribute(
+            "aria-label",
+            `Add ${userState.data?.steamUser?.name ?? "user"} to ${
+                group.name ?? "group"
+            }`,
+        );
+    }
+
+    item.append(main, action);
+    return item;
+}
+
+function setUserGroupsBusy(busy) {
+    userGroupsBusy = busy;
+    for (const button of userGroupsList.querySelectorAll(
+        "button[data-user-group-remove-id]",
+    )) {
+        button.disabled = busy;
+    }
+    renderUserGroupSearchResults();
+}
+
+async function addUserToGroup(groupID) {
+    const user = userState.data?.steamUser;
+    const group = userGroupSearchResults.find(
+        (candidate) => String(candidate.groupId ?? "") === groupID,
+    );
+    if (userGroupsBusy || !user || !group || userGroupIDs().has(groupID)) {
+        return;
+    }
+
+    await mutateUserGroup(
+        "PUT",
+        group,
+        user,
+        `Adding “${user.name}” to “${group.name}”…`,
+        `Added “${user.name}” to “${group.name}”.`,
+    );
+}
+
+async function removeUserFromGroup(groupID) {
+    const user = userState.data?.steamUser;
+    const group = (userState.data?.groups ?? []).find(
+        (candidate) => String(candidate.groupId ?? "") === groupID,
+    );
+    if (userGroupsBusy || !user || !group) {
+        return;
+    }
+
+    await mutateUserGroup(
+        "DELETE",
+        group,
+        user,
+        `Removing “${user.name}” from “${group.name}”…`,
+        `Removed “${user.name}” from “${group.name}”.`,
+    );
+}
+
+// Applies a membership change, then reloads the user view. The Apps tab,
+// page and page size live in the URL, so the reload keeps them.
+async function mutateUserGroup(
+    method,
+    group,
+    user,
+    pendingMessage,
+    doneMessage,
+) {
+    setUserGroupsBusy(true);
+    setGroupFormStatus(userGroupsStatus, pendingMessage);
+    try {
+        const response = await apiFetch(
+            `/api/groups/${encodeURIComponent(group.groupId)}/members/${encodeURIComponent(user.steamId)}`,
+            { method },
+        );
+        if (!response.ok) {
+            throw await readError(response);
+        }
+        await loadUser();
+        // Another user may have been opened while this was in flight.
+        if (
+            String(userState.data?.steamUser?.steamId ?? "") ===
+            String(user.steamId)
+        ) {
+            setGroupFormStatus(userGroupsStatus, doneMessage);
+        } else {
+            setGroupFormStatus(userGroupsStatus, "");
+        }
+    } catch (error) {
+        setGroupFormStatus(userGroupsStatus, errorMessage(error), "error");
+    } finally {
+        setUserGroupsBusy(false);
+    }
 }
 
 function renderUserSummary(data) {
@@ -1537,8 +2857,14 @@ function renderUserSummary(data) {
         image.loading = "lazy";
         const avatarValue = newElement("dd");
         avatarValue.append(image);
-        const avatarRow = newElement("div", "details__row details__row--avatar");
-        avatarRow.append(newElement("dt", "visually-hidden", "Avatar"), avatarValue);
+        const avatarRow = newElement(
+            "div",
+            "details__row details__row--avatar",
+        );
+        avatarRow.append(
+            newElement("dt", "visually-hidden", "Avatar"),
+            avatarValue,
+        );
         rows.push(avatarRow);
     }
 
@@ -1958,6 +3284,8 @@ function setActiveTab(list) {
 function clearUserView() {
     userState.data = null;
     userSummary.hidden = true;
+    userGroups.hidden = true;
+    userGroupsList.replaceChildren();
     userApps.hidden = true;
     userSummaryDetails.replaceChildren();
     userSummaryNotice.textContent = "";
@@ -1971,6 +3299,7 @@ function clearUserView() {
 
 function setUserLoading(loading) {
     userSummary.setAttribute("aria-busy", String(loading));
+    userGroups.setAttribute("aria-busy", String(loading));
     userApps.setAttribute("aria-busy", String(loading));
 }
 
@@ -2015,34 +3344,36 @@ function detailRowNode(label, node) {
 
 function enterCommonGames() {
     const parsed = parseCommonGamesQuery(location.search);
-    const validUserCount =
-        parsed.steamIDs.length >= 2 &&
-        parsed.steamIDs.length <= MAX_COMMON_GAME_USERS;
 
     commonGamesState.selectedUsers.clear();
-    commonGamesState.searchUsers = [];
+    commonGamesState.selectedGroups.clear();
     commonGamesState.results = null;
-    commonGamesState.submitted = parsed.submitted && validUserCount;
+    commonGamesState.submitted = parsed.submitted;
     commonGamesLimit.value = String(parsed.limit ?? COMMON_GAMES_LIMIT_DEFAULT);
 
     clearCommonGamesSearchResults();
     clearCommonGamesResultsView();
-    renderCommonGamesSelectedUsers();
+    renderCommonGamesSelection();
     setCommonGamesStatus("");
 
-    if (parsed.steamIDs.length === 0) {
+    if (parsed.steamIDs.length === 0 && parsed.groupIDs.length === 0) {
+        commonGamesState.submitted = false;
         return;
     }
-    if (!validUserCount) {
+    // Individually listed users alone can't exceed the limit in a valid link,
+    // and the by-ids endpoint would reject them anyway.
+    if (parsed.steamIDs.length > MAX_COMMON_GAME_USERS) {
+        commonGamesState.submitted = false;
         setCommonGamesStatus(
-            `Shared links must include between 2 and ${MAX_COMMON_GAME_USERS} users.`,
+            `This shared link now includes more than ${MAX_COMMON_GAME_USERS} users.`,
             "error",
         );
         return;
     }
 
-    void loadCommonGamesUsersFromURL(
+    void loadCommonGamesSelectionFromURL(
         parsed.steamIDs,
+        parsed.groupIDs,
         commonGamesState.submitted,
     );
 }
@@ -2074,27 +3405,32 @@ function leaveCommonGames() {
 
 function parseCommonGamesQuery(search) {
     const params = new URLSearchParams(search);
-    const seen = new Set();
-    const steamIDs = [];
+    return {
+        steamIDs: parseCommonGamesIDList(params.get("steamIds")),
+        groupIDs: parseCommonGamesIDList(params.get("groupIds")),
+        limit: commonGamesLimitFromValue(params.get("limit")),
+        submitted: params.get("submitted") === "1",
+    };
+}
 
-    for (const rawID of (params.get("steamIds") ?? "").split(",")) {
+// Parses a comma-separated list of positive integer IDs, dropping invalid
+// entries, leading zeros and duplicates. IDs stay strings.
+function parseCommonGamesIDList(raw) {
+    const seen = new Set();
+    const ids = [];
+    for (const rawID of (raw ?? "").split(",")) {
         const value = rawID.trim();
         if (!/^\d+$/.test(value)) {
             continue;
         }
-        const steamID = value.replace(/^0+(?=\d)/, "");
-        if (steamID === "0" || seen.has(steamID)) {
+        const id = value.replace(/^0+(?=\d)/, "");
+        if (id === "0" || seen.has(id)) {
             continue;
         }
-        seen.add(steamID);
-        steamIDs.push(steamID);
+        seen.add(id);
+        ids.push(id);
     }
-
-    return {
-        steamIDs,
-        limit: commonGamesLimitFromValue(params.get("limit")),
-        submitted: params.get("submitted") === "1",
-    };
+    return ids;
 }
 
 function buildCommonGamesURL() {
@@ -2102,6 +3438,10 @@ function buildCommonGamesURL() {
     const steamIDs = [...commonGamesState.selectedUsers.keys()];
     if (steamIDs.length > 0) {
         params.set("steamIds", steamIDs.join(","));
+    }
+    const groupIDs = [...commonGamesState.selectedGroups.keys()];
+    if (groupIDs.length > 0) {
+        params.set("groupIds", groupIDs.join(","));
     }
 
     const limit = parseCommonGamesLimit();
@@ -2130,43 +3470,68 @@ function syncCommonGamesURL(push = false) {
     currentHref = url;
 }
 
-async function loadCommonGamesUsersFromURL(steamIDs, submitted) {
+async function loadCommonGamesSelectionFromURL(steamIDs, groupIDs, submitted) {
     const token = ++commonGamesUsersToken;
     commonGamesUsersController?.abort();
     const controller = new AbortController();
     commonGamesUsersController = controller;
 
     setCommonGamesStatus(
-        `Loading ${formatCount(steamIDs.length)} shared ${
-            steamIDs.length === 1 ? "user" : "users"
-        }…`,
+        `Loading ${commonGamesSharedCountPhrase(
+            steamIDs.length,
+            groupIDs.length,
+        )}…`,
     );
 
-    try {
-        const response = await apiFetch(
-            `/api/steamusers/by-ids?steamIds=${encodeURIComponent(
-                steamIDs.join(","),
-            )}`,
-            {
-                headers: { Accept: "application/json" },
-                signal: controller.signal,
-            },
-        );
-        if (!isCommonGamesUsersCurrent(token)) {
-            return;
+    const fetchJSON = async (path, notFoundMessage) => {
+        const response = await apiFetch(path, {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+        });
+        if (response.status === 404 && notFoundMessage) {
+            throw new Error(notFoundMessage);
         }
         if (!response.ok) {
             throw await readError(response);
         }
+        return response.json();
+    };
 
-        const body = await response.json();
+    try {
+        // Groups are live references: membership is fetched fresh, so a
+        // link reflects members added or removed since it was shared.
+        const [usersBody, groupsBody] = await Promise.all([
+            steamIDs.length > 0
+                ? fetchJSON(
+                      `/api/steamusers/by-ids?steamIds=${encodeURIComponent(
+                          steamIDs.join(","),
+                      )}`,
+                  )
+                : null,
+            groupIDs.length > 0
+                ? fetchJSON(
+                      `/api/groups/by-ids?groupIds=${encodeURIComponent(
+                          groupIDs.join(","),
+                      )}`,
+                      "A shared group no longer exists.",
+                  )
+                : null,
+        ]);
         if (!isCommonGamesUsersCurrent(token)) {
             return;
         }
 
-        const users = Array.isArray(body?.steamUsers) ? body.steamUsers : [];
+        const users = Array.isArray(usersBody?.steamUsers)
+            ? usersBody.steamUsers
+            : [];
         const usersByID = new Map(
             users.map((user) => [String(user.steamId ?? ""), user]),
+        );
+        const groups = Array.isArray(groupsBody?.groups)
+            ? groupsBody.groups
+            : [];
+        const groupsByID = new Map(
+            groups.map((group) => [String(group.groupId ?? ""), group]),
         );
 
         commonGamesState.selectedUsers.clear();
@@ -2176,9 +3541,24 @@ async function loadCommonGamesUsersFromURL(steamIDs, submitted) {
                 commonGamesState.selectedUsers.set(steamID, user);
             }
         }
-        renderCommonGamesSelectedUsers();
+        commonGamesState.selectedGroups.clear();
+        for (const groupID of groupIDs) {
+            const group = groupsByID.get(groupID);
+            if (group && countValue(group.unavailableMemberCount) === 0) {
+                commonGamesState.selectedGroups.set(groupID, group);
+            }
+        }
+        renderCommonGamesSelection();
 
-        if (commonGamesState.selectedUsers.size < 2) {
+        const distinctCount = commonGamesSelectedSteamIDs().size;
+        if (distinctCount > MAX_COMMON_GAME_USERS) {
+            setCommonGamesStatus(
+                `This shared link now includes more than ${MAX_COMMON_GAME_USERS} users.`,
+                "error",
+            );
+            return;
+        }
+        if (distinctCount < 2) {
             setCommonGamesStatus(
                 "This shared link no longer includes enough imported users.",
                 "error",
@@ -2186,12 +3566,14 @@ async function loadCommonGamesUsersFromURL(steamIDs, submitted) {
             return;
         }
 
-        const missingCount =
+        const missingUsers =
             steamIDs.length - commonGamesState.selectedUsers.size;
-        if (missingCount > 0) {
+        const missingGroups =
+            groupIDs.length - commonGamesState.selectedGroups.size;
+        if (missingUsers + missingGroups > 0) {
             setCommonGamesStatus(
-                `${formatCount(missingCount)} shared ${
-                    missingCount === 1 ? "user is" : "users are"
+                `${commonGamesSharedCountPhrase(missingUsers, missingGroups)} ${
+                    missingUsers + missingGroups === 1 ? "is" : "are"
                 } no longer available. Select at least 2 users and try again.`,
                 "error",
             );
@@ -2214,6 +3596,26 @@ async function loadCommonGamesUsersFromURL(steamIDs, submitted) {
     }
 }
 
+// "2 shared users", "1 shared group", "1 shared user and 2 shared groups".
+function commonGamesSharedCountPhrase(userCount, groupCount) {
+    const parts = [];
+    if (userCount > 0) {
+        parts.push(
+            `${formatCount(userCount)} shared ${
+                userCount === 1 ? "user" : "users"
+            }`,
+        );
+    }
+    if (groupCount > 0) {
+        parts.push(
+            `${formatCount(groupCount)} shared ${
+                groupCount === 1 ? "group" : "groups"
+            }`,
+        );
+    }
+    return parts.join(" and ");
+}
+
 function isCommonGamesUsersCurrent(token) {
     return token === commonGamesUsersToken;
 }
@@ -2226,7 +3628,7 @@ async function performCommonGamesSearch() {
     const name = commonGamesSearchInput.value.trim();
     if (!name) {
         clearCommonGamesSearchResults();
-        setCommonGamesSearchStatus("Enter a Steam name.", "error");
+        setCommonGamesSearchStatus("Enter a user or group name.", "error");
         commonGamesSearchInput.focus();
         return;
     }
@@ -2237,33 +3639,40 @@ async function performCommonGamesSearch() {
     setCommonGamesSearchBusy(true);
     setCommonGamesSearchStatus(`Searching for “${name}”…`);
 
-    try {
-        const response = await apiFetch(
-            `/api/steamusers/search?name=${encodeURIComponent(name)}`,
-            {
-                headers: { Accept: "application/json" },
-                signal: controller.signal,
-            },
-        );
-        if (!isCommonGamesSearchCurrent(token)) {
-            return;
-        }
+    const fetchJSON = async (path) => {
+        const response = await apiFetch(path, {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+        });
         if (!response.ok) {
             throw await readError(response);
         }
+        return response.json();
+    };
 
-        const body = await response.json();
+    try {
+        const query = encodeURIComponent(name);
+        const [usersBody, groupsBody] = await Promise.all([
+            fetchJSON(`/api/steamusers/search?name=${query}`),
+            fetchJSON(`/api/groups/search?name=${query}`),
+        ]);
         if (!isCommonGamesSearchCurrent(token)) {
             return;
         }
 
-        commonGamesState.searchUsers = Array.isArray(body?.steamUsers)
-            ? body.steamUsers
+        commonGamesState.searchUsers = Array.isArray(usersBody?.steamUsers)
+            ? usersBody.steamUsers
+            : [];
+        commonGamesState.searchGroups = Array.isArray(groupsBody?.groups)
+            ? groupsBody.groups
             : [];
 
-        if (commonGamesState.searchUsers.length === 0) {
+        if (
+            commonGamesState.searchUsers.length === 0 &&
+            commonGamesState.searchGroups.length === 0
+        ) {
             clearCommonGamesSearchResults();
-            setCommonGamesSearchStatus(`No users match “${name}”.`);
+            setCommonGamesSearchStatus(`No users or groups match “${name}”.`);
             return;
         }
 
@@ -2284,22 +3693,49 @@ async function performCommonGamesSearch() {
 }
 
 function renderCommonGamesSearchResults() {
-    if (commonGamesState.searchUsers.length === 0) {
-        commonGamesSearchResults.replaceChildren();
-        commonGamesSearchResultsPanel.hidden = true;
-        return;
-    }
+    const { searchUsers, searchGroups } = commonGamesState;
 
-    commonGamesSearchResultsPanel.hidden = false;
+    commonGamesSearchResultsPanel.hidden =
+        searchUsers.length === 0 && searchGroups.length === 0;
+    commonGamesUserResultsSection.hidden = searchUsers.length === 0;
+    commonGamesGroupResultsSection.hidden = searchGroups.length === 0;
     commonGamesSearchResults.replaceChildren(
-        ...commonGamesState.searchUsers.map(buildCommonGamesSearchResult),
+        ...searchUsers.map(buildCommonGamesSearchResult),
+    );
+    commonGamesGroupResults.replaceChildren(
+        ...searchGroups.map(buildCommonGamesGroupResult),
     );
 }
 
 function clearCommonGamesSearchResults() {
     commonGamesState.searchUsers = [];
-    commonGamesSearchResults.replaceChildren();
-    commonGamesSearchResultsPanel.hidden = true;
+    commonGamesState.searchGroups = [];
+    renderCommonGamesSearchResults();
+}
+
+// Distinct Steam IDs covered by the selection (individual users plus group
+// members), optionally including extra IDs to preview an addition.
+function commonGamesSelectedSteamIDs(extra = []) {
+    const ids = new Set(commonGamesState.selectedUsers.keys());
+    for (const group of commonGamesState.selectedGroups.values()) {
+        for (const member of commonGamesGroupMembers(group)) {
+            ids.add(String(member.steamId));
+        }
+    }
+    for (const id of extra) {
+        ids.add(String(id));
+    }
+    return ids;
+}
+
+function commonGamesGroupMembers(group) {
+    return Array.isArray(group?.members) ? group.members : [];
+}
+
+function commonGamesGroupMemberIDs(group) {
+    return commonGamesGroupMembers(group).map((member) =>
+        String(member.steamId ?? ""),
+    );
 }
 
 function commonGamesUserStatus(user) {
@@ -2336,8 +3772,10 @@ function buildCommonGamesSearchResult(user) {
 
     const steamID = String(user.steamId ?? "");
     const selected = commonGamesState.selectedUsers.has(steamID);
+    // A user already covered by a selected group adds nobody, so it stays
+    // addable even at the limit.
     const atLimit =
-        commonGamesState.selectedUsers.size >= MAX_COMMON_GAME_USERS;
+        commonGamesSelectedSteamIDs([steamID]).size > MAX_COMMON_GAME_USERS;
     const available = user.hasSucceededImport === true;
 
     const action = newElement("button", "result__link");
@@ -2368,21 +3806,78 @@ function buildCommonGamesSearchResult(user) {
     return item;
 }
 
+function commonGamesGroupStatus(group) {
+    const status = groupStatus(group);
+    if (status.label === "Available") {
+        return { label: "Ready", tone: "succeeded" };
+    }
+    return status;
+}
+
+function buildCommonGamesGroupResult(group) {
+    const item = newElement("li", "result");
+    const main = newElement("div", "result__main");
+    const status = commonGamesGroupStatus(group);
+
+    const heading = newElement("div", "result__heading");
+    heading.append(
+        newElement("p", "result__name", group.name ?? ""),
+        badge(status.label, status.tone),
+    );
+    main.append(heading);
+
+    const groupID = String(group.groupId ?? "");
+    const selected = commonGamesState.selectedGroups.has(groupID);
+    const available = countValue(group.unavailableMemberCount) === 0;
+    const currentSize = commonGamesSelectedSteamIDs().size;
+    const newSize = commonGamesSelectedSteamIDs(
+        commonGamesGroupMemberIDs(group),
+    ).size;
+    const overLimit = newSize > MAX_COMMON_GAME_USERS;
+    const addable = !selected && available && !overLimit;
+
+    let meta = `Members: ${formatCount(group.memberCount)}`;
+    if (addable) {
+        meta += ` · adds ${formatCount(newSize - currentSize)} new`;
+    }
+    main.append(newElement("p", "result__id", meta));
+
+    const action = newElement("button", "result__link");
+    action.type = "button";
+    action.dataset.addGroupId = groupID;
+
+    if (selected) {
+        action.textContent = "Added";
+        action.disabled = true;
+    } else if (!available) {
+        action.textContent = "Unavailable";
+        action.disabled = true;
+        action.title = "A member has no completed import";
+    } else if (overLimit) {
+        action.textContent = "Add";
+        action.disabled = true;
+        action.title = `Adding this group would exceed ${MAX_COMMON_GAME_USERS} users.`;
+    } else {
+        action.textContent = "Add";
+    }
+
+    item.append(main, action);
+    return item;
+}
+
 function addCommonGamesUser(user) {
     const steamID = String(user.steamId ?? "");
     if (
         steamID === "" ||
         user.hasSucceededImport !== true ||
-        commonGamesState.selectedUsers.size >= MAX_COMMON_GAME_USERS ||
+        commonGamesSelectedSteamIDs([steamID]).size > MAX_COMMON_GAME_USERS ||
         commonGamesState.selectedUsers.has(steamID)
     ) {
         return;
     }
 
     commonGamesState.selectedUsers.set(steamID, user);
-    invalidateCommonGamesResults();
-    renderCommonGamesSelectedUsers();
-    renderCommonGamesSearchResults();
+    commonGamesSelectionChanged();
 }
 
 function removeCommonGamesUser(steamID) {
@@ -2390,26 +3885,89 @@ function removeCommonGamesUser(steamID) {
         return;
     }
 
+    commonGamesSelectionChanged();
+}
+
+function addCommonGamesGroup(group) {
+    const groupID = String(group.groupId ?? "");
+    if (
+        groupID === "" ||
+        countValue(group.unavailableMemberCount) > 0 ||
+        commonGamesState.selectedGroups.has(groupID) ||
+        commonGamesSelectedSteamIDs(commonGamesGroupMemberIDs(group)).size >
+            MAX_COMMON_GAME_USERS
+    ) {
+        return;
+    }
+
+    commonGamesState.selectedGroups.set(groupID, group);
+    commonGamesSelectionChanged();
+}
+
+function removeCommonGamesGroup(groupID) {
+    if (!commonGamesState.selectedGroups.delete(String(groupID))) {
+        return;
+    }
+
+    commonGamesSelectionChanged();
+}
+
+function commonGamesSelectionChanged() {
     invalidateCommonGamesResults();
-    renderCommonGamesSelectedUsers();
+    renderCommonGamesSelection();
     renderCommonGamesSearchResults();
 }
 
-function renderCommonGamesSelectedUsers() {
+function renderCommonGamesSelection() {
     const users = [...commonGamesState.selectedUsers.values()];
-    const atLimit = users.length >= MAX_COMMON_GAME_USERS;
+    const groups = [...commonGamesState.selectedGroups.values()];
+    const distinctCount = commonGamesSelectedSteamIDs().size;
+    const atLimit = distinctCount >= MAX_COMMON_GAME_USERS;
 
-    commonGamesSelectedCount.textContent = `${users.length} / ${MAX_COMMON_GAME_USERS}`;
-    commonGamesSelectedEmpty.hidden = users.length > 0;
+    commonGamesSelectedCount.textContent = `${distinctCount} / ${MAX_COMMON_GAME_USERS}`;
+    commonGamesSelectedEmpty.hidden = users.length > 0 || groups.length > 0;
     commonGamesSelectedHint.hidden = !atLimit;
     commonGamesSelectedHint.textContent = atLimit
         ? `Selection limit reached (${MAX_COMMON_GAME_USERS} users).`
         : "";
+    commonGamesSelectedGroupsSection.hidden = groups.length === 0;
+    commonGamesSelectedGroups.replaceChildren(
+        ...groups.map(buildCommonGamesSelectedGroup),
+    );
+    commonGamesSelectedUsersSection.hidden = users.length === 0;
     commonGamesSelectedList.replaceChildren(
         ...users.map(buildCommonGamesSelectedUser),
     );
 
     syncCommonGamesControls();
+}
+
+function buildCommonGamesSelectedGroup(group) {
+    const item = newElement("li", "selected-user");
+    const main = newElement("div", "selected-user__main");
+    const memberCount = commonGamesGroupMembers(group).length;
+    main.append(
+        newElement("span", "selected-user__name", group.name ?? ""),
+        newElement(
+            "span",
+            "selected-user__id",
+            `${formatCount(memberCount)} ${
+                memberCount === 1 ? "member" : "members"
+            }`,
+        ),
+    );
+
+    const remove = newElement(
+        "button",
+        "button--secondary selected-user__remove",
+        "Remove",
+    );
+    remove.type = "button";
+    remove.dataset.removeGroupId = String(group.groupId ?? "");
+    remove.setAttribute("aria-label", `Remove group ${group.name ?? ""}`);
+    item.append(main, remove);
+
+    return item;
 }
 
 function buildCommonGamesSelectedUser(user) {
@@ -2434,14 +3992,14 @@ function buildCommonGamesSelectedUser(user) {
 }
 
 function syncCommonGamesControls() {
-    const enoughUsers = commonGamesState.selectedUsers.size >= 2;
+    const enoughUsers = commonGamesSelectedSteamIDs().size >= 2;
 
     commonGamesSubmit.disabled = !enoughUsers || commonGamesBusy;
     commonGamesLimit.disabled = commonGamesBusy;
     commonGamesSubmitHint.hidden = enoughUsers;
     commonGamesSubmitHint.textContent = enoughUsers
         ? ""
-        : "Select at least 2 users to continue.";
+        : "Select at least 2 distinct users to continue.";
 }
 
 function parseCommonGamesLimit() {
@@ -2465,11 +4023,35 @@ function commonGamesLimitFromValue(rawValue) {
 }
 
 async function findCommonGames() {
-    const users = [...commonGamesState.selectedUsers.values()];
-    if (users.length < 2) {
-        setCommonGamesStatus("Select at least 2 users.", "error");
+    const usersByID = new Map();
+    for (const user of commonGamesState.selectedUsers.values()) {
+        const steamID = String(user.steamId ?? "");
+        usersByID.set(steamID, { steamId: steamID, name: user.name ?? "" });
+    }
+    for (const group of commonGamesState.selectedGroups.values()) {
+        for (const member of commonGamesGroupMembers(group)) {
+            const steamID = String(member.steamId ?? "");
+            if (!usersByID.has(steamID)) {
+                usersByID.set(steamID, {
+                    steamId: steamID,
+                    name: member.name ?? "",
+                });
+            }
+        }
+    }
+
+    if (usersByID.size < 2) {
+        setCommonGamesStatus("Select at least 2 distinct users.", "error");
         return;
     }
+    if (usersByID.size > MAX_COMMON_GAME_USERS) {
+        setCommonGamesStatus(
+            `Select at most ${MAX_COMMON_GAME_USERS} distinct users.`,
+            "error",
+        );
+        return;
+    }
+    const users = [...usersByID.values()];
 
     const limit = parseCommonGamesLimit();
     if (limit === null) {
@@ -2502,7 +4084,7 @@ async function findCommonGames() {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                steamIds: users.map((user) => String(user.steamId)),
+                steamIds: [...usersByID.keys()],
                 limit,
             }),
             signal: controller.signal,
@@ -3049,7 +4631,9 @@ const pageLifecycles = {
     dashboard: { enter: enterDashboard, leave: leaveDashboard },
     import: { enter: enterImport, leave: leaveImport },
     search: { leave: leaveSearch },
+    searchGroups: { leave: leaveSearchGroups },
     user: { enter: enterUser, leave: leaveUser },
+    group: { enter: enterGroup, leave: leaveGroup },
     commonGames: { enter: enterCommonGames, leave: leaveCommonGames },
     login: { enter: enterLogin },
     createAccount: { enter: enterCreateAccount },

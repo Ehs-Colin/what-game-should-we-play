@@ -53,6 +53,16 @@ func NewHandler(
 	}
 }
 
+var errInvalidSteamID = errors.New("steam id must be a positive SteamID64 value")
+
+func parseSteamID(raw string) (int64, error) {
+	steamID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || steamID <= 0 {
+		return 0, errInvalidSteamID
+	}
+	return steamID, nil
+}
+
 func parseSteamIDs(rawIDs []string) ([]int64, error) {
 	seen := make(map[int64]struct{}, len(rawIDs))
 	steamIDs := make([]int64, 0, len(rawIDs))
@@ -61,8 +71,8 @@ func parseSteamIDs(rawIDs []string) ([]int64, error) {
 		if value == "" {
 			return nil, errors.New("steamIds must not contain blank values")
 		}
-		steamID, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || steamID <= 0 {
+		steamID, err := parseSteamID(value)
+		if err != nil {
 			return nil, errors.New("steamIds must contain positive SteamID64 values")
 		}
 		if _, duplicate := seen[steamID]; duplicate {

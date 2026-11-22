@@ -1,6 +1,14 @@
 # Steam user groups plan
 
-Status: proposed
+Status: completed
+
+## Original Prompt
+
+In workspace/steam-decision-engine-dev/ Make a plan to add groups that steam users can be assigned to. Groups should have an id and a name. Steam users can be assigned to any number of groups. The group can be selected in the Find Common Games page. The Find Common Games function should know how many users are in selected groups, ensuring the constraint of minimum and maximum users is kept. If a user is in multiple selected groups or is selected individually while in 1 or more selected groups the user should only count as one distinct user.
+
+A View Group page should be added that matches the functionality of the View User page except with a group instead of a user. The User list of users assigned to the group should appear the same as the Search Users page User list.
+
+Ask any questions about unresolved issues. After all questions are answered, write the plan to docs/plans, breaking it up into distinct and small phases that can be implemented and tested individually.
 
 ## Goal
 

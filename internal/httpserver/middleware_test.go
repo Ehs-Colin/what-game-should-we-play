@@ -20,11 +20,22 @@ func TestValidateRequestOrigin(t *testing.T) {
 		wantStatus int
 		wantNext   bool
 	}{
-		{name: "non-post passes through", method: http.MethodGet, wantStatus: http.StatusNoContent, wantNext: true},
+		{name: "get passes through", method: http.MethodGet, wantStatus: http.StatusNoContent, wantNext: true},
+		{name: "get with foreign origin passes through", method: http.MethodGet, origin: "https://evil.test", wantStatus: http.StatusNoContent, wantNext: true},
+		{name: "head passes through", method: http.MethodHead, wantStatus: http.StatusNoContent, wantNext: true},
+		{name: "options passes through", method: http.MethodOptions, wantStatus: http.StatusNoContent, wantNext: true},
 		{name: "matching origin", method: http.MethodPost, origin: appOrigin, wantStatus: http.StatusNoContent, wantNext: true},
 		{name: "matching referer", method: http.MethodPost, referer: appOrigin + "/some/page", wantStatus: http.StatusNoContent, wantNext: true},
 		{name: "foreign origin", method: http.MethodPost, origin: "https://evil.test", wantStatus: http.StatusForbidden, wantNext: false},
 		{name: "missing origin", method: http.MethodPost, wantStatus: http.StatusForbidden, wantNext: false},
+		{name: "put matching origin", method: http.MethodPut, origin: appOrigin, wantStatus: http.StatusNoContent, wantNext: true},
+		{name: "patch matching origin", method: http.MethodPatch, origin: appOrigin, wantStatus: http.StatusNoContent, wantNext: true},
+		{name: "delete matching origin", method: http.MethodDelete, origin: appOrigin, wantStatus: http.StatusNoContent, wantNext: true},
+		{name: "delete matching referer", method: http.MethodDelete, referer: appOrigin + "/group?name=Friends", wantStatus: http.StatusNoContent, wantNext: true},
+		{name: "put foreign origin", method: http.MethodPut, origin: "https://evil.test", wantStatus: http.StatusForbidden, wantNext: false},
+		{name: "patch foreign origin", method: http.MethodPatch, origin: "https://evil.test", wantStatus: http.StatusForbidden, wantNext: false},
+		{name: "delete foreign origin", method: http.MethodDelete, origin: "https://evil.test", wantStatus: http.StatusForbidden, wantNext: false},
+		{name: "delete missing origin", method: http.MethodDelete, wantStatus: http.StatusForbidden, wantNext: false},
 	}
 
 	for _, test := range tests {

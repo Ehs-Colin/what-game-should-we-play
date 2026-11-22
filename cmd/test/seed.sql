@@ -303,6 +303,84 @@ INSERT INTO import_jobs (
     (76561198000000009, 'succeeded', 1, 1, 0, 0, 0, 0, 0, 0,
      NULL, now() - interval '9 hours', now() - interval '9 hours', now() - interval '8 hours');
 
+-- Bulk users RaidMember01-RaidMember26 for the 25-user Common Games limit.
+-- Each has a succeeded import and owns 2-3 of the multiplayer apps above, so
+-- every raid member is selectable on its own.
+INSERT INTO steam_users (
+    steam_id, name, wishlist_private, personaname, profileurl,
+    avatar, avatar_medium, avatar_full, created_at, updated_at
+)
+SELECT
+    76561198000001000 + n,
+    'RaidMember' || lpad(n::text, 2, '0'),
+    false,
+    'Raid Member ' || n,
+    'https://steamcommunity.com/profiles/' || (76561198000001000 + n) || '/',
+    'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb.jpg',
+    'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg',
+    'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg',
+    now() - interval '10 days',
+    now() - interval '1 day' + n * interval '1 minute'
+FROM generate_series(1, 26) AS n;
+
+INSERT INTO steam_user_apps (steam_id, app_id, removed, created_at, updated_at)
+SELECT DISTINCT 76561198000001000 + n, multiplayer.apps[pick], false, now(), now()
+FROM generate_series(1, 26) AS n
+CROSS JOIN (SELECT ARRAY[
+    730, 570, 440, 620, 10, 80, 322330, 413150, 105600, 550,
+    632360, 892970, 251570, 427520, 367520, 391540, 268910, 814380, 374320, 255710
+] AS apps) AS multiplayer
+CROSS JOIN LATERAL (VALUES
+    (n % 20 + 1),
+    ((n + 7) % 20 + 1),
+    (CASE WHEN n % 2 = 0 THEN (n + 13) % 20 + 1 END)
+) AS picks(pick)
+WHERE pick IS NOT NULL;
+
+INSERT INTO import_jobs (
+    steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps,
+    wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps,
+    error, created_at, started_at, finished_at
+)
+SELECT
+    sua.steam_id, 'succeeded', COUNT(*), COUNT(*), 0, 0, 0, 0, 0, 0,
+    NULL, now() - interval '1 day', now() - interval '1 day', now() - interval '1 day' + interval '1 minute'
+FROM steam_user_apps sua
+WHERE sua.steam_id BETWEEN 76561198000001001 AND 76561198000001026
+GROUP BY sua.steam_id;
+
+-- Groups. Each covers one Group status or Common Games selection scenario;
+-- see cmd/test/README.md.
+INSERT INTO steam_user_groups (name, created_at, updated_at) VALUES
+    ('Friday Night',  now() - interval '14 days', now() - interval '1 day'),
+    ('Co-op Crew',    now() - interval '12 days', now() - interval '2 days'),
+    ('Not Ready Yet', now() - interval '10 days', now() - interval '3 days'),
+    ('Empty Group',   now() - interval '8 days',  now() - interval '8 days'),
+    ('Almost Full',   now() - interval '6 days',  now() - interval '4 days'),
+    ('Big Raid',      now() - interval '5 days',  now() - interval '5 days');
+
+INSERT INTO steam_user_group_members (group_id, steam_id, created_at)
+SELECT g.id, members.steam_id, now()
+FROM (VALUES
+    ('Friday Night',  76561198000000001), -- SomePlayer
+    ('Friday Night',  76561198000000004), -- BobTheBuilder
+    ('Friday Night',  76561198000000008), -- WishlistOnly
+    ('Co-op Crew',    76561198000000004), -- BobTheBuilder
+    ('Co-op Crew',    76561198000000008), -- WishlistOnly
+    ('Co-op Crew',    76561198000000009), -- PrivateWishlist
+    ('Co-op Crew',    76561198000000005), -- CaseTwin
+    ('Not Ready Yet', 76561198000000001), -- SomePlayer
+    ('Not Ready Yet', 76561198000000002)  -- PlayerTwo (queued)
+) AS members(group_name, steam_id)
+JOIN steam_user_groups g ON g.name = members.group_name;
+
+INSERT INTO steam_user_group_members (group_id, steam_id, created_at)
+SELECT g.id, 76561198000001000 + n, now()
+FROM steam_user_groups g
+CROSS JOIN generate_series(1, 26) AS n
+WHERE (g.name = 'Almost Full' AND n <= 23)
+   OR g.name = 'Big Raid';
+
 COMMIT;
 
 ANALYZE;

@@ -142,6 +142,14 @@ func newHandlerEnv(t *testing.T, resolver fakeResolver) *handlerEnv {
 	mux.HandleFunc("GET /api/steamusers/by-name", handler.GetSteamUserView)
 	mux.HandleFunc("GET /api/import-jobs/{id}", handler.GetImportJob)
 	mux.HandleFunc("POST /api/common-games", handler.GetCommonGames)
+	mux.HandleFunc("POST /api/groups", handler.CreateGroup)
+	mux.HandleFunc("GET /api/groups/by-name", handler.GetGroupView)
+	mux.HandleFunc("GET /api/groups/search", handler.SearchGroups)
+	mux.HandleFunc("GET /api/groups/by-ids", handler.GetGroupsByIDs)
+	mux.HandleFunc("PATCH /api/groups/{id}", handler.RenameGroup)
+	mux.HandleFunc("DELETE /api/groups/{id}", handler.DeleteGroup)
+	mux.HandleFunc("PUT /api/groups/{id}/members/{steamId}", handler.AddGroupMember)
+	mux.HandleFunc("DELETE /api/groups/{id}/members/{steamId}", handler.RemoveGroupMember)
 	return &handlerEnv{db: db, queries: dbgen.New(db), mux: mux}
 }
 
