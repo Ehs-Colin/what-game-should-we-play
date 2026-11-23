@@ -177,9 +177,16 @@ button:focus-visible,
 }
 
 .card__header {
+    position: relative;
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid rgba(102, 192, 244, 0.12);
+}
+
+.card__header-action {
+    position: absolute;
+    top: 0;
+    right: 0;
 }
 
 .eyebrow {
@@ -353,7 +360,6 @@ select:disabled {
     margin: 0;
 }
 
-.group-create,
 .user-group-add {
     margin-top: 1.25rem;
     padding-top: 1rem;
@@ -1310,4 +1316,35 @@ a.app-cell__name:hover {
     .selected-user {
         align-items: flex-start;
     }
+
+    .card__header-action {
+        position: static;
+        margin-top: 0.75rem;
+    }
+}
+
+/* Create Group dialog. The form controls themselves reuse the .lookup,
+   .status, and .group-actions styles from the card content. */
+
+dialog {
+    width: min(26rem, calc(100vw - 2rem));
+    padding: 1.5rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: linear-gradient(180deg, #1f2f42 0%, #16202d 100%);
+    color: var(--text);
+    box-shadow: var(--shadow);
+}
+
+dialog[open] {
+    display: grid;
+}
+
+dialog::backdrop {
+    background: rgba(11, 15, 25, 0.72);
+    backdrop-filter: blur(2px);
+}
+
+dialog input[type="text"] {
+    width: 100%;
 }

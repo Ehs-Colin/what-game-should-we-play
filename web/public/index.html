@@ -12,12 +12,8 @@
             <a class="brand" href="/" data-route="/">Game Picker Utility</a>
             <nav id="site-nav" class="site-nav" aria-label="Main">
                 <a href="/" data-route="/">Find Common Games</a>
-                <a href="/search" data-route="/search">Search Users</a>
-                <a href="/search-groups" data-route="/search-groups"
-                    >Search Groups</a
-                >
-                <a href="/user" data-route="/user">View User</a>
-                <a href="/group" data-route="/group">View Group</a>
+                <a href="/user" data-route="/user">Users</a>
+                <a href="/group" data-route="/group">Groups</a>
                 <a href="/import" data-route="/import">Import Steam User</a>
                 <a href="/admin-panel" data-route="/admin-panel">Admin Panel</a>
             </nav>
@@ -287,232 +283,14 @@
                 </div>
             </section>
 
-            <section id="view-search" data-view="/search" hidden>
-                <div class="card">
-                    <header class="card__header">
-                        <p class="eyebrow">Search Users</p>
-                        <h1 tabindex="-1">Find imported Steam users</h1>
-                        <p class="lede">
-                            Search by any part of a stored Steam name, then open
-                            a user to view their apps.
-                        </p>
-                    </header>
-
-                    <form id="search-form" class="lookup" novalidate>
-                        <label for="search-name">Steam name</label>
-                        <div class="lookup__row">
-                            <input
-                                id="search-name"
-                                name="name"
-                                type="text"
-                                autocomplete="off"
-                                spellcheck="false"
-                                placeholder="e.g. gaben"
-                                required
-                            />
-                            <button id="search-button" type="submit">
-                                Search
-                            </button>
-                        </div>
-                    </form>
-
-                    <section
-                        id="search-controls"
-                        class="controls"
-                        aria-label="Sort and filter results"
-                        hidden
-                    >
-                        <label>
-                            Sort by
-                            <select id="search-sort">
-                                <option value="name">Name</option>
-                                <option value="updated">Last updated</option>
-                                <option value="owned">Owned apps</option>
-                                <option value="wishlist">Wishlist apps</option>
-                            </select>
-                        </label>
-                        <label>
-                            Direction
-                            <select id="search-direction">
-                                <option value="asc">Ascending</option>
-                                <option value="desc">Descending</option>
-                            </select>
-                        </label>
-                        <label>
-                            Wishlist
-                            <select id="search-wishlist">
-                                <option value="all">Any</option>
-                                <option value="public">Public</option>
-                                <option value="private">Private</option>
-                            </select>
-                        </label>
-                        <button
-                            id="search-reset"
-                            type="button"
-                            class="button--secondary"
-                        >
-                            Reset
-                        </button>
-                    </section>
-
-                    <p
-                        id="search-status"
-                        class="status"
-                        role="status"
-                        aria-live="polite"
-                    ></p>
-
-                    <div id="search-toolbar" class="app-toolbar" hidden>
-                        <p id="search-count" class="hint"></p>
-                        <label>
-                            Rows per page
-                            <select id="search-page-size">
-                                <option value="10">10</option>
-                                <option value="25">25</option>
-                                <option value="50">50</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    <div id="search-results-panel" class="table-scroll" hidden>
-                        <table id="search-table" class="app-table">
-                            <thead>
-                                <tr>
-                                    <th scope="col">User</th>
-                                    <th scope="col">Status</th>
-                                    <th
-                                        scope="col"
-                                        class="app-expand-heading"
-                                        aria-label="Expand"
-                                    ></th>
-                                </tr>
-                            </thead>
-                            <tbody id="search-results"></tbody>
-                        </table>
-                    </div>
-
-                    <nav
-                        id="search-pagination"
-                        class="pagination"
-                        aria-label="User pages"
-                    ></nav>
-                </div>
-            </section>
-
-            <section id="view-search-groups" data-view="/search-groups" hidden>
-                <div class="card">
-                    <header class="card__header">
-                        <p class="eyebrow">Search Groups</p>
-                        <h1 tabindex="-1">Find groups of Steam users</h1>
-                        <p class="lede">
-                            Search by any part of a group name, then open a
-                            group to view its members.
-                        </p>
-                    </header>
-
-                    <form id="search-groups-form" class="lookup" novalidate>
-                        <label for="search-groups-name">Group name</label>
-                        <div class="lookup__row">
-                            <input
-                                id="search-groups-name"
-                                name="name"
-                                type="text"
-                                autocomplete="off"
-                                spellcheck="false"
-                                placeholder="e.g. Friday Night"
-                                required
-                            />
-                            <button id="search-groups-button" type="submit">
-                                Search
-                            </button>
-                        </div>
-                    </form>
-
-                    <section
-                        id="search-groups-controls"
-                        class="controls"
-                        aria-label="Sort results"
-                        hidden
-                    >
-                        <label>
-                            Sort by
-                            <select id="search-groups-sort">
-                                <option value="name">Name</option>
-                                <option value="members">Member count</option>
-                            </select>
-                        </label>
-                        <label>
-                            Direction
-                            <select id="search-groups-direction">
-                                <option value="asc">Ascending</option>
-                                <option value="desc">Descending</option>
-                            </select>
-                        </label>
-                        <button
-                            id="search-groups-reset"
-                            type="button"
-                            class="button--secondary"
-                        >
-                            Reset
-                        </button>
-                    </section>
-
-                    <p
-                        id="search-groups-status"
-                        class="status"
-                        role="status"
-                        aria-live="polite"
-                    ></p>
-
-                    <div id="search-groups-toolbar" class="app-toolbar" hidden>
-                        <p id="search-groups-count" class="hint"></p>
-                        <label>
-                            Rows per page
-                            <select id="search-groups-page-size">
-                                <option value="10">10</option>
-                                <option value="25">25</option>
-                                <option value="50">50</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    <div
-                        id="search-groups-results-panel"
-                        class="table-scroll"
-                        hidden
-                    >
-                        <table id="search-groups-table" class="app-table">
-                            <thead>
-                                <tr>
-                                    <th scope="col">Group</th>
-                                    <th scope="col">Status</th>
-                                    <th
-                                        scope="col"
-                                        class="app-expand-heading"
-                                        aria-label="Expand"
-                                    ></th>
-                                </tr>
-                            </thead>
-                            <tbody id="search-groups-results"></tbody>
-                        </table>
-                    </div>
-
-                    <nav
-                        id="search-groups-pagination"
-                        class="pagination"
-                        aria-label="Group pages"
-                    ></nav>
-                </div>
-            </section>
-
             <section id="view-user" data-view="/user" hidden>
                 <div class="card">
                     <header class="card__header">
-                        <p class="eyebrow">View User</p>
-                        <h1 tabindex="-1">View a Steam user</h1>
+                        <p class="eyebrow">Users</p>
+                        <h1 tabindex="-1">Find and view a Steam user</h1>
                         <p class="lede">
-                            Enter an exact Steam name to see their imported
-                            library.
+                            An exact Steam name opens that user's imported
+                            library. Any other text lists the users it matches.
                         </p>
                     </header>
 
@@ -529,12 +307,12 @@
                                 required
                             />
                             <button id="user-submit" type="submit">
-                                View user
+                                Search
                             </button>
                         </div>
                         <p class="hint">
-                            Exact name match, ignoring case. Use Search Users
-                            for partial searches.
+                            Exact names match ignoring case; partial names
+                            list every user they match.
                         </p>
                     </form>
 
@@ -695,17 +473,107 @@
                             ></nav>
                         </div>
                     </section>
+
+                    <section
+                        id="search-controls"
+                        class="controls"
+                        aria-label="Sort and filter results"
+                        hidden
+                    >
+                        <label>
+                            Sort by
+                            <select id="search-sort">
+                                <option value="name">Name</option>
+                                <option value="updated">Last updated</option>
+                                <option value="owned">Owned apps</option>
+                                <option value="wishlist">Wishlist apps</option>
+                            </select>
+                        </label>
+                        <label>
+                            Direction
+                            <select id="search-direction">
+                                <option value="asc">Ascending</option>
+                                <option value="desc">Descending</option>
+                            </select>
+                        </label>
+                        <label>
+                            Wishlist
+                            <select id="search-wishlist">
+                                <option value="all">Any</option>
+                                <option value="public">Public</option>
+                                <option value="private">Private</option>
+                            </select>
+                        </label>
+                        <button
+                            id="search-reset"
+                            type="button"
+                            class="button--secondary"
+                        >
+                            Reset
+                        </button>
+                    </section>
+
+                    <p
+                        id="search-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <div id="search-toolbar" class="app-toolbar" hidden>
+                        <p id="search-count" class="hint"></p>
+                        <label>
+                            Rows per page
+                            <select id="search-page-size">
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div id="search-results-panel" class="table-scroll" hidden>
+                        <table id="search-table" class="app-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">User</th>
+                                    <th scope="col">Status</th>
+                                    <th
+                                        scope="col"
+                                        class="app-expand-heading"
+                                        aria-label="Expand"
+                                    ></th>
+                                </tr>
+                            </thead>
+                            <tbody id="search-results"></tbody>
+                        </table>
+                    </div>
+
+                    <nav
+                        id="search-pagination"
+                        class="pagination"
+                        aria-label="Search result pages"
+                    ></nav>
                 </div>
             </section>
 
             <section id="view-group" data-view="/group" hidden>
                 <div class="card">
                     <header class="card__header">
-                        <p class="eyebrow">View Group</p>
-                        <h1 tabindex="-1">View a group</h1>
+                        <p class="eyebrow">Groups</p>
+                        <h1 tabindex="-1">Find and view a group</h1>
                         <p class="lede">
-                            Enter an exact group name to see its members.
+                            An exact group name opens that group and its
+                            members. Any other text lists the groups it
+                            matches.
                         </p>
+                        <button
+                            id="create-group-button"
+                            type="button"
+                            class="button--secondary card__header-action"
+                        >
+                            + Create Group
+                        </button>
                     </header>
 
                     <form id="group-form" class="lookup" novalidate>
@@ -721,47 +589,13 @@
                                 required
                             />
                             <button id="group-submit" type="submit">
-                                View group
+                                Search
                             </button>
                         </div>
                         <p class="hint">
-                            Exact name match, ignoring case. Use Search Groups
-                            for partial searches.
+                            Exact names match ignoring case; partial names
+                            list every group they match.
                         </p>
-                    </form>
-
-                    <form
-                        id="group-create-form"
-                        class="lookup group-create"
-                        novalidate
-                    >
-                        <label for="group-create-name">Create a group</label>
-                        <div class="lookup__row">
-                            <input
-                                id="group-create-name"
-                                name="name"
-                                type="text"
-                                autocomplete="off"
-                                spellcheck="false"
-                                maxlength="64"
-                                placeholder="New group name"
-                                required
-                            />
-                            <button
-                                id="group-create-button"
-                                type="submit"
-                                class="button--secondary"
-                                data-group-mutation
-                            >
-                                Create
-                            </button>
-                        </div>
-                        <p
-                            id="group-create-status"
-                            class="status"
-                            role="status"
-                            aria-live="polite"
-                        ></p>
                     </form>
 
                     <p
@@ -950,6 +784,118 @@
                         ></p>
                         <ul id="group-add-results" class="result-list"></ul>
                     </section>
+
+                    <section
+                        id="search-groups-controls"
+                        class="controls"
+                        aria-label="Sort results"
+                        hidden
+                    >
+                        <label>
+                            Sort by
+                            <select id="search-groups-sort">
+                                <option value="name">Name</option>
+                                <option value="members">Member count</option>
+                            </select>
+                        </label>
+                        <label>
+                            Direction
+                            <select id="search-groups-direction">
+                                <option value="asc">Ascending</option>
+                                <option value="desc">Descending</option>
+                            </select>
+                        </label>
+                        <button
+                            id="search-groups-reset"
+                            type="button"
+                            class="button--secondary"
+                        >
+                            Reset
+                        </button>
+                    </section>
+
+                    <p
+                        id="search-groups-status"
+                        class="status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+
+                    <div id="search-groups-toolbar" class="app-toolbar" hidden>
+                        <p id="search-groups-count" class="hint"></p>
+                        <label>
+                            Rows per page
+                            <select id="search-groups-page-size">
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div
+                        id="search-groups-results-panel"
+                        class="table-scroll"
+                        hidden
+                    >
+                        <table id="search-groups-table" class="app-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Group</th>
+                                    <th scope="col">Status</th>
+                                    <th
+                                        scope="col"
+                                        class="app-expand-heading"
+                                        aria-label="Expand"
+                                    ></th>
+                                </tr>
+                            </thead>
+                            <tbody id="search-groups-results"></tbody>
+                        </table>
+                    </div>
+
+                    <nav
+                        id="search-groups-pagination"
+                        class="pagination"
+                        aria-label="Search result pages"
+                    ></nav>
+
+                    <dialog id="create-group-dialog" aria-labelledby="create-group-title">
+                        <h2 id="create-group-title" class="section-title">
+                            Create a group
+                        </h2>
+                        <form id="group-create-form" class="lookup" novalidate>
+                            <label for="group-create-name">Group name</label>
+                            <input
+                                id="group-create-name"
+                                name="name"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                maxlength="64"
+                                placeholder="New group name"
+                                required
+                            />
+                            <p
+                                id="group-create-status"
+                                class="status"
+                                role="status"
+                                aria-live="polite"
+                            ></p>
+                            <div class="group-actions">
+                                <button id="group-create-button" type="submit">
+                                    Create
+                                </button>
+                                <button
+                                    id="group-create-cancel"
+                                    type="button"
+                                    class="button--secondary"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </dialog>
                 </div>
             </section>
 

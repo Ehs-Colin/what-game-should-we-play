@@ -14,21 +14,24 @@ const ROUTES = new Map([
     ["/", "commonGames"],
     ["/admin-panel", "dashboard"],
     ["/import", "import"],
-    ["/search", "search"],
-    ["/search-groups", "searchGroups"],
     ["/user", "user"],
     ["/group", "group"],
     ["/login", "login"],
     ["/create-account", "createAccount"],
 ]);
 
+// The standalone Search pages were merged into the combined Users and
+// Groups pages. Old links keep working by redirecting, carrying the query.
+const LEGACY_ROUTE_REDIRECTS = new Map([
+    ["/search", "/user"],
+    ["/search-groups", "/group"],
+]);
+
 const ROUTE_TITLES = {
     dashboard: "Admin Panel",
     import: "Import Steam User",
-    search: "Search Users",
-    searchGroups: "Search Groups",
-    user: "View User",
-    group: "View Group",
+    user: "Users",
+    group: "Groups",
     commonGames: "Find Common Games",
     login: "Sign in",
     createAccount: "Create Account",
@@ -91,9 +94,6 @@ const metricApps = document.querySelector("#metric-apps");
 const metricRunning = document.querySelector("#metric-running");
 const metricQueued = document.querySelector("#metric-queued");
 
-const searchForm = document.querySelector("#search-form");
-const searchInput = document.querySelector("#search-name");
-const searchButton = document.querySelector("#search-button");
 const searchControls = document.querySelector("#search-controls");
 const searchSort = document.querySelector("#search-sort");
 const searchDirection = document.querySelector("#search-direction");
@@ -107,9 +107,6 @@ const searchResultsPanel = document.querySelector("#search-results-panel");
 const searchResults = document.querySelector("#search-results");
 const searchPagination = document.querySelector("#search-pagination");
 
-const searchGroupsForm = document.querySelector("#search-groups-form");
-const searchGroupsInput = document.querySelector("#search-groups-name");
-const searchGroupsButton = document.querySelector("#search-groups-button");
 const searchGroupsControls = document.querySelector("#search-groups-controls");
 const searchGroupsSort = document.querySelector("#search-groups-sort");
 const searchGroupsDirection = document.querySelector(
@@ -132,6 +129,7 @@ const searchGroupsPagination = document.querySelector(
 
 const userForm = document.querySelector("#user-form");
 const userInput = document.querySelector("#user-name");
+const userSubmit = document.querySelector("#user-submit");
 const userStatus = document.querySelector("#user-status");
 const userSummary = document.querySelector("#user-summary");
 const userStatusBadge = document.querySelector("#user-status-badge");
@@ -158,6 +156,7 @@ const userGroupAddResults = document.querySelector("#user-group-add-results");
 
 const groupForm = document.querySelector("#group-form");
 const groupInput = document.querySelector("#group-name");
+const groupSubmit = document.querySelector("#group-submit");
 const groupStatusLine = document.querySelector("#group-status");
 const groupSummary = document.querySelector("#group-summary");
 const groupStatusBadge = document.querySelector("#group-status-badge");
@@ -171,9 +170,12 @@ const groupMembersDirection = document.querySelector(
 const groupMembersCount = document.querySelector("#group-members-count");
 const groupMembersPanel = document.querySelector("#group-members-panel");
 const groupMemberRows = document.querySelector("#group-member-rows");
+const createGroupButton = document.querySelector("#create-group-button");
+const createGroupDialog = document.querySelector("#create-group-dialog");
 const groupCreateForm = document.querySelector("#group-create-form");
 const groupCreateInput = document.querySelector("#group-create-name");
 const groupCreateButton = document.querySelector("#group-create-button");
+const groupCreateCancel = document.querySelector("#group-create-cancel");
 const groupCreateStatus = document.querySelector("#group-create-status");
 const groupRenameButton = document.querySelector("#group-rename-button");
 const groupDeleteButton = document.querySelector("#group-delete-button");
@@ -365,11 +367,6 @@ form.addEventListener("submit", (event) => {
     void search();
 });
 
-searchForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void performSearch();
-});
-
 searchSort.addEventListener("change", () => {
     searchDirection.value =
         SEARCH_SORT_DEFAULT_DIRECTIONS[searchSort.value] ?? "asc";
@@ -392,11 +389,6 @@ searchPageSize.addEventListener("change", () => {
 searchReset.addEventListener("click", () => {
     resetSearchControls();
     renderSearchPipeline();
-});
-
-searchGroupsForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void performGroupSearch();
 });
 
 searchGroupsSort.addEventListener("change", () => {
@@ -471,7 +463,6 @@ userPageSize.addEventListener("change", () => {
 
 groupForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    setGroupFormStatus(groupCreateStatus, "");
     const name = groupInput.value.trim();
     if (!name) {
         setGroupStatus("Enter a group name.", "error");
@@ -481,17 +472,36 @@ groupForm.addEventListener("submit", (event) => {
     pushGroupURL(name);
 });
 
+createGroupButton.addEventListener("click", () => {
+    openCreateGroupDialog();
+});
+
+groupCreateForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void createGroup();
+});
+
+groupCreateCancel.addEventListener("click", () => {
+    createGroupDialog.close();
+});
+
+// A click whose target is the dialog itself came from the backdrop.
+createGroupDialog.addEventListener("click", (event) => {
+    if (event.target === createGroupDialog) {
+        createGroupDialog.close();
+    }
+});
+
+createGroupDialog.addEventListener("close", () => {
+    createGroupButton.focus();
+});
+
 groupMembersSort.addEventListener("change", () => {
     groupMembersDirection.value =
         SEARCH_SORT_DEFAULT_DIRECTIONS[groupMembersSort.value] ?? "asc";
     renderGroupMembers();
 });
 groupMembersDirection.addEventListener("change", renderGroupMembers);
-
-groupCreateForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void createGroup();
-});
 
 groupRenameButton.addEventListener("click", () => {
     setRenameFormOpen(groupRenameForm.hidden);
@@ -1198,17 +1208,19 @@ async function bootstrap() {
     renderRoute();
 }
 
-async function performSearch() {
+// Shows the combined Users page's search state for the given term. The term
+// also arrives from loadUser when the exact by-name lookup misses.
+async function performSearch(term) {
     const token = ++searchToken;
     searchController?.abort();
     const controller = new AbortController();
     searchController = controller;
 
-    const name = searchInput.value.trim();
+    const name = String(term ?? "").trim();
     if (!name) {
         clearSearchResults();
         setSearchStatus("Enter a Steam name.", "error");
-        searchInput.focus();
+        userInput.focus();
         return;
     }
 
@@ -1636,33 +1648,27 @@ function setSearchStatus(message, state) {
 
 function setSearchBusy(busy) {
     searchBusy = busy;
-    searchInput.disabled = busy;
-    searchButton.disabled = busy;
+    userInput.disabled = busy;
+    userSubmit.disabled = busy;
 }
 
 function isSearchCurrent(token) {
     return token === searchToken;
 }
 
-function leaveSearch() {
-    searchController?.abort();
-    if (searchBusy) {
-        setSearchBusy(false);
-        setSearchStatus("");
-    }
-}
-
-async function performGroupSearch() {
+// Shows the combined Groups page's search state for the given term. The term
+// also arrives from loadGroup when the exact by-name lookup misses.
+async function performGroupSearch(term) {
     const token = ++searchGroupsToken;
     searchGroupsController?.abort();
     const controller = new AbortController();
     searchGroupsController = controller;
 
-    const name = searchGroupsInput.value.trim();
+    const name = String(term ?? "").trim();
     if (!name) {
         clearGroupSearchResults();
         setGroupSearchStatus("Enter a group name.", "error");
-        searchGroupsInput.focus();
+        groupInput.focus();
         return;
     }
 
@@ -1888,20 +1894,12 @@ function setGroupSearchStatus(message, state) {
 
 function setGroupSearchBusy(busy) {
     searchGroupsBusy = busy;
-    searchGroupsInput.disabled = busy;
-    searchGroupsButton.disabled = busy;
+    groupInput.disabled = busy;
+    groupSubmit.disabled = busy;
 }
 
 function isGroupSearchCurrent(token) {
     return token === searchGroupsToken;
-}
-
-function leaveSearchGroups() {
-    searchGroupsController?.abort();
-    if (searchGroupsBusy) {
-        setGroupSearchBusy(false);
-        setGroupSearchStatus("");
-    }
 }
 
 function enterGroup() {
@@ -1913,13 +1911,18 @@ function enterGroup() {
     groupController?.abort();
     groupController = null;
     groupToken += 1;
+    searchGroupsController?.abort();
+    searchGroupsController = null;
+    searchGroupsToken += 1;
+    if (searchGroupsBusy) {
+        setGroupSearchBusy(false);
+    }
 
     groupInput.value = parsed.name;
     resetGroupMemberControls();
     resetGroupManagement();
-    setGroupFormStatus(groupCreateStatus, "");
     setGroupLoading(false);
-    clearGroupView();
+    clearGroupPage();
 
     if (!parsed.name) {
         setGroupStatus("");
@@ -1937,6 +1940,13 @@ function leaveGroup() {
     groupAddController?.abort();
     groupAddController = null;
     groupAddToken += 1;
+    // The combined page may also have a Search Groups request in flight.
+    searchGroupsController?.abort();
+    searchGroupsToken += 1;
+    if (searchGroupsBusy) {
+        setGroupSearchBusy(false);
+        setGroupSearchStatus("");
+    }
 }
 
 function parseGroupQuery(search) {
@@ -1949,6 +1959,12 @@ function pushGroupURL(name) {
     if (url !== location.pathname + location.search + location.hash) {
         history.pushState({}, "", url);
         currentHref = url;
+    }
+
+    if (name !== groupState.name) {
+        // A new term: hide the previous view or search results until the
+        // combined lookup decides which mode to render.
+        clearGroupPage();
     }
 
     groupState.name = name;
@@ -1985,12 +2001,16 @@ async function loadGroup() {
         return;
     }
 
+    // Pin the term for this request so a late 404 can search for exactly
+    // what was looked up.
+    const name = groupState.name;
+
     setGroupLoading(true);
-    setGroupStatus(`Loading “${groupState.name}”…`);
+    setGroupStatus(`Loading “${name}”…`);
 
     try {
         const response = await apiFetch(
-            `/api/groups/by-name?name=${encodeURIComponent(groupState.name)}`,
+            `/api/groups/by-name?name=${encodeURIComponent(name)}`,
             {
                 headers: { Accept: "application/json" },
                 signal: controller.signal,
@@ -2001,9 +2021,11 @@ async function loadGroup() {
         }
 
         if (response.status === 404) {
+            // Not an exact match: show search results for the same term.
             clearGroupView();
+            setGroupStatus("");
             setGroupLoading(false);
-            showGroupNotFound(groupState.name);
+            void performGroupSearch(name);
             return;
         }
         if (!response.ok) {
@@ -2035,6 +2057,10 @@ function applyGroupResponse(body) {
     if (!group) {
         throw new Error("The server did not return a group.");
     }
+
+    // View mode: never leave search results showing alongside the group.
+    clearGroupSearchResults();
+    setGroupSearchStatus("");
 
     groupState.data = {
         group,
@@ -2140,6 +2166,15 @@ function setGroupLoading(loading) {
     groupMembers.setAttribute("aria-busy", String(loading));
 }
 
+// The combined page shows either the group view or search results, never
+// both. This hides both states while a new lookup is pending.
+function clearGroupPage() {
+    clearGroupView();
+    clearGroupSearchResults();
+    setGroupStatus("");
+    setGroupSearchStatus("");
+}
+
 function setGroupStatus(message, state) {
     groupStatusLine.replaceChildren();
     groupStatusLine.textContent = message;
@@ -2148,19 +2183,6 @@ function setGroupStatus(message, state) {
     } else {
         delete groupStatusLine.dataset.state;
     }
-}
-
-function showGroupNotFound(name) {
-    groupStatusLine.replaceChildren();
-    groupStatusLine.dataset.state = "error";
-    groupStatusLine.append(
-        document.createTextNode(`No group named “${name}”. `),
-    );
-
-    const link = newElement("a", "", "Search Groups");
-    link.href = "/search-groups";
-    link.dataset.route = "/search-groups";
-    groupStatusLine.append(link);
 }
 
 function isGroupCurrent(token) {
@@ -2192,7 +2214,9 @@ function setGroupFormStatus(element, message, state) {
 
 function setGroupMutationBusy(busy) {
     groupMutationBusy = busy;
+    createGroupButton.disabled = busy;
     groupCreateButton.disabled = busy;
+    groupCreateCancel.disabled = busy;
     groupRenameButton.disabled = busy;
     groupDeleteButton.disabled = busy;
     groupRenameSave.disabled = busy;
@@ -2207,6 +2231,13 @@ function setGroupMutationBusy(busy) {
 
 function currentGroup() {
     return groupState.data?.group ?? null;
+}
+
+function openCreateGroupDialog() {
+    groupCreateInput.value = "";
+    setGroupFormStatus(groupCreateStatus, "");
+    createGroupDialog.showModal();
+    groupCreateInput.focus();
 }
 
 async function createGroup() {
@@ -2237,12 +2268,10 @@ async function createGroup() {
         const body = await response.json();
         const createdName = body?.group?.name ?? name;
 
+        createGroupDialog.close();
         groupCreateInput.value = "";
+        setGroupFormStatus(groupCreateStatus, "");
         pushGroupURL(createdName);
-        setGroupFormStatus(
-            groupCreateStatus,
-            `Created group “${createdName}”.`,
-        );
     } catch (error) {
         setGroupFormStatus(groupCreateStatus, errorMessage(error), "error");
     } finally {
@@ -2323,7 +2352,8 @@ async function deleteGroup() {
     }
 
     setGroupMutationBusy(true);
-    setGroupStatus(`Deleting “${group.name}”…`);
+    const deletedName = group.name ?? groupState.name;
+    setGroupStatus(`Deleting “${deletedName}”…`);
     try {
         const response = await apiFetch(
             `/api/groups/${encodeURIComponent(group.groupId)}`,
@@ -2333,11 +2363,13 @@ async function deleteGroup() {
             throw await readError(response);
         }
 
-        history.pushState({}, "", "/search-groups");
-        renderRoute();
+        // Stay on /group?name=<term>: the exact match is gone, so the
+        // combined lookup lands in search mode and lists what remains.
+        clearGroupView();
+        setGroupStatus("");
+        await performGroupSearch(deletedName);
         // Earlier results may still list the deleted group.
-        clearGroupSearchResults();
-        setGroupSearchStatus(`Deleted group “${group.name}”.`);
+        setGroupSearchStatus(`Deleted group “${deletedName}”.`);
     } catch (error) {
         setGroupStatus(errorMessage(error), "error");
     } finally {
@@ -2531,12 +2563,18 @@ function enterUser() {
     userController?.abort();
     userController = null;
     userToken += 1;
+    searchController?.abort();
+    searchController = null;
+    searchToken += 1;
+    if (searchBusy) {
+        setSearchBusy(false);
+    }
 
     userInput.value = parsed.name;
     userPageSize.value = String(parsed.pageSize);
     setActiveTab(parsed.list);
     setUserLoading(false);
-    clearUserView();
+    clearUserPage();
     resetUserGroupSearch();
 
     if (!parsed.name) {
@@ -2553,6 +2591,13 @@ function leaveUser() {
     userController = null;
     userToken += 1;
     resetUserGroupSearch();
+    // The combined page may also have a Search Users request in flight.
+    searchController?.abort();
+    searchToken += 1;
+    if (searchBusy) {
+        setSearchBusy(false);
+        setSearchStatus("");
+    }
 }
 
 function parseUserQuery(search) {
@@ -2595,6 +2640,12 @@ function pushUserURL(name, list, page, pageSize) {
     if (url !== location.pathname + location.search + location.hash) {
         history.pushState({}, "", url);
         currentHref = url;
+    }
+
+    if (name !== userState.name) {
+        // A new term: hide the previous view or search results until the
+        // combined lookup decides which mode to render.
+        clearUserPage();
     }
 
     userState.name = name;
@@ -2668,11 +2719,15 @@ async function loadUser() {
         return;
     }
 
+    // Pin the term for this request so a late 404 can search for exactly
+    // what was looked up.
+    const name = userState.name;
+
     setUserLoading(true);
-    setUserStatus(`Loading “${userState.name}”…`);
+    setUserStatus(`Loading “${name}”…`);
 
     const params = new URLSearchParams({
-        name: userState.name,
+        name,
         list: userState.list,
         page: String(userState.page),
         pageSize: String(userState.pageSize),
@@ -2691,9 +2746,12 @@ async function loadUser() {
         }
 
         if (response.status === 404) {
-            clearUserView();
+            // Not an exact match: fall through to search results for the
+            // same term.
             setUserLoading(false);
-            showUserNotFound();
+            clearUserView();
+            setUserStatus("");
+            void performSearch(name);
             return;
         }
         if (!response.ok) {
@@ -2725,6 +2783,10 @@ function applyUserResponse(body) {
     if (!user) {
         throw new Error("The server did not return a Steam user.");
     }
+
+    // View mode: never leave search results showing alongside the user.
+    clearSearchResults();
+    setSearchStatus("");
 
     userState.data = body;
 
@@ -3467,6 +3529,15 @@ function setUserLoading(loading) {
     userApps.setAttribute("aria-busy", String(loading));
 }
 
+// The combined page shows either the user view or search results, never
+// both. This hides both states while a new lookup is pending.
+function clearUserPage() {
+    clearUserView();
+    clearSearchResults();
+    setUserStatus("");
+    setSearchStatus("");
+}
+
 function setUserStatus(message, state) {
     userStatus.replaceChildren();
     userStatus.textContent = message;
@@ -3475,17 +3546,6 @@ function setUserStatus(message, state) {
     } else {
         delete userStatus.dataset.state;
     }
-}
-
-function showUserNotFound() {
-    userStatus.replaceChildren();
-    userStatus.dataset.state = "error";
-    userStatus.append(document.createTextNode("Steam user not found. "));
-
-    const link = newElement("a", "", "Search Users");
-    link.href = "/search";
-    link.dataset.route = "/search";
-    userStatus.append(link);
 }
 
 function isUserCurrent(token) {
@@ -4794,8 +4854,6 @@ function enterCreateAccount() {
 const pageLifecycles = {
     dashboard: { enter: enterDashboard, leave: leaveDashboard },
     import: { enter: enterImport, leave: leaveImport },
-    search: { leave: leaveSearch },
-    searchGroups: { leave: leaveSearchGroups },
     user: { enter: enterUser, leave: leaveUser },
     group: { enter: enterGroup, leave: leaveGroup },
     commonGames: { enter: enterCommonGames, leave: leaveCommonGames },
@@ -4820,6 +4878,17 @@ function renderRoute() {
     }
 
     const path = normalizePath(location.pathname);
+    const legacyRedirect = LEGACY_ROUTE_REDIRECTS.get(path);
+    if (legacyRedirect !== undefined) {
+        history.replaceState(
+            {},
+            "",
+            legacyRedirect + location.search + location.hash,
+        );
+        renderRoute();
+        return;
+    }
+
     const routePath = ROUTES.has(path) ? path : "/";
     if (!ROUTES.has(path)) {
         history.replaceState({}, "", "/");
