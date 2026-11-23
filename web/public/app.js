@@ -11,19 +11,19 @@ const COMMON_GAMES_LIMIT_MAX = 100;
 const COMMON_GAMES_LIMIT_DEFAULT = 10;
 
 const ROUTES = new Map([
-    ["/", "dashboard"],
+    ["/", "commonGames"],
+    ["/admin-panel", "dashboard"],
     ["/import", "import"],
     ["/search", "search"],
     ["/search-groups", "searchGroups"],
     ["/user", "user"],
     ["/group", "group"],
-    ["/common-games", "commonGames"],
     ["/login", "login"],
     ["/create-account", "createAccount"],
 ]);
 
 const ROUTE_TITLES = {
-    dashboard: "Dashboard",
+    dashboard: "Admin Panel",
     import: "Import Steam User",
     search: "Search Users",
     searchGroups: "Search Groups",
@@ -3617,7 +3617,7 @@ function buildCommonGamesURL() {
     }
 
     const query = params.toString();
-    return query ? `/common-games?${query}` : "/common-games";
+    return query ? `/?${query}` : "/";
 }
 
 function syncCommonGamesURL(push = false) {
