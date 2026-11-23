@@ -363,7 +363,18 @@
                         role="status"
                         aria-live="polite"
                     ></p>
-                    <p id="search-count" class="hint" hidden></p>
+
+                    <div id="search-toolbar" class="app-toolbar" hidden>
+                        <p id="search-count" class="hint"></p>
+                        <label>
+                            Rows per page
+                            <select id="search-page-size">
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </label>
+                    </div>
 
                     <div id="search-results-panel" class="table-scroll" hidden>
                         <table id="search-table" class="app-table">
@@ -381,6 +392,12 @@
                             <tbody id="search-results"></tbody>
                         </table>
                     </div>
+
+                    <nav
+                        id="search-pagination"
+                        class="pagination"
+                        aria-label="User pages"
+                    ></nav>
                 </div>
             </section>
 
@@ -448,7 +465,18 @@
                         role="status"
                         aria-live="polite"
                     ></p>
-                    <p id="search-groups-count" class="hint" hidden></p>
+
+                    <div id="search-groups-toolbar" class="app-toolbar" hidden>
+                        <p id="search-groups-count" class="hint"></p>
+                        <label>
+                            Rows per page
+                            <select id="search-groups-page-size">
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </label>
+                    </div>
 
                     <div
                         id="search-groups-results-panel"
@@ -470,6 +498,12 @@
                             <tbody id="search-groups-results"></tbody>
                         </table>
                     </div>
+
+                    <nav
+                        id="search-groups-pagination"
+                        class="pagination"
+                        aria-label="Group pages"
+                    ></nav>
                 </div>
             </section>
 

@@ -1012,6 +1012,10 @@ a.app-cell__name:hover {
     margin-top: 1rem;
 }
 
+.pagination:empty {
+    display: none;
+}
+
 .pagination__button {
     padding: 0.42rem 0.68rem;
     border: 1px solid var(--border);

@@ -100,9 +100,12 @@ const searchDirection = document.querySelector("#search-direction");
 const searchWishlist = document.querySelector("#search-wishlist");
 const searchReset = document.querySelector("#search-reset");
 const searchStatus = document.querySelector("#search-status");
+const searchToolbar = document.querySelector("#search-toolbar");
 const searchCount = document.querySelector("#search-count");
+const searchPageSize = document.querySelector("#search-page-size");
 const searchResultsPanel = document.querySelector("#search-results-panel");
 const searchResults = document.querySelector("#search-results");
+const searchPagination = document.querySelector("#search-pagination");
 
 const searchGroupsForm = document.querySelector("#search-groups-form");
 const searchGroupsInput = document.querySelector("#search-groups-name");
@@ -114,11 +117,18 @@ const searchGroupsDirection = document.querySelector(
 );
 const searchGroupsReset = document.querySelector("#search-groups-reset");
 const searchGroupsStatus = document.querySelector("#search-groups-status");
+const searchGroupsToolbar = document.querySelector("#search-groups-toolbar");
 const searchGroupsCount = document.querySelector("#search-groups-count");
+const searchGroupsPageSize = document.querySelector(
+    "#search-groups-page-size",
+);
 const searchGroupsResultsPanel = document.querySelector(
     "#search-groups-results-panel",
 );
 const searchGroupsResults = document.querySelector("#search-groups-results");
+const searchGroupsPagination = document.querySelector(
+    "#search-groups-pagination",
+);
 
 const userForm = document.querySelector("#user-form");
 const userInput = document.querySelector("#user-name");
@@ -272,6 +282,8 @@ let searchToken = 0;
 let searchController = null;
 let searchBusy = false;
 let searchUsers = [];
+let searchPage = 1;
+let searchRowsPerPage = 10;
 
 const SEARCH_SORT_DEFAULT_DIRECTIONS = {
     name: "asc",
@@ -284,6 +296,8 @@ let searchGroupsToken = 0;
 let searchGroupsController = null;
 let searchGroupsBusy = false;
 let searchGroups = [];
+let searchGroupsPage = 1;
+let searchGroupsRowsPerPage = 10;
 
 const GROUP_SORT_DEFAULT_DIRECTIONS = {
     name: "asc",
@@ -291,6 +305,7 @@ const GROUP_SORT_DEFAULT_DIRECTIONS = {
 };
 
 const APP_PAGE_SIZES = [25, 50, 100];
+const SEARCH_PAGE_SIZES = [10, 25, 50];
 
 let userToken = 0;
 let userController = null;
@@ -358,10 +373,22 @@ searchForm.addEventListener("submit", (event) => {
 searchSort.addEventListener("change", () => {
     searchDirection.value =
         SEARCH_SORT_DEFAULT_DIRECTIONS[searchSort.value] ?? "asc";
+    searchPage = 1;
     renderSearchPipeline();
 });
-searchDirection.addEventListener("change", renderSearchPipeline);
-searchWishlist.addEventListener("change", renderSearchPipeline);
+searchDirection.addEventListener("change", () => {
+    searchPage = 1;
+    renderSearchPipeline();
+});
+searchWishlist.addEventListener("change", () => {
+    searchPage = 1;
+    renderSearchPipeline();
+});
+searchPageSize.addEventListener("change", () => {
+    searchRowsPerPage = searchPageSizeFromValue(searchPageSize.value);
+    searchPage = 1;
+    renderSearchPipeline();
+});
 searchReset.addEventListener("click", () => {
     resetSearchControls();
     renderSearchPipeline();
@@ -375,9 +402,20 @@ searchGroupsForm.addEventListener("submit", (event) => {
 searchGroupsSort.addEventListener("change", () => {
     searchGroupsDirection.value =
         GROUP_SORT_DEFAULT_DIRECTIONS[searchGroupsSort.value] ?? "asc";
+    searchGroupsPage = 1;
     renderGroupSearchResults();
 });
-searchGroupsDirection.addEventListener("change", renderGroupSearchResults);
+searchGroupsDirection.addEventListener("change", () => {
+    searchGroupsPage = 1;
+    renderGroupSearchResults();
+});
+searchGroupsPageSize.addEventListener("change", () => {
+    searchGroupsRowsPerPage = searchPageSizeFromValue(
+        searchGroupsPageSize.value,
+    );
+    searchGroupsPage = 1;
+    renderGroupSearchResults();
+});
 searchGroupsReset.addEventListener("click", () => {
     resetGroupSearchControls();
     renderGroupSearchResults();
@@ -1228,35 +1266,70 @@ function clearSearchResults() {
     searchResults.replaceChildren();
     searchResultsPanel.hidden = true;
     searchControls.hidden = true;
+    searchToolbar.hidden = true;
     searchCount.textContent = "";
     searchCount.hidden = true;
+    searchPagination.replaceChildren();
 }
 
 function renderSearchPipeline() {
     if (searchUsers.length === 0) {
         searchResultsPanel.hidden = true;
         searchControls.hidden = true;
+        searchToolbar.hidden = true;
+        searchPagination.replaceChildren();
         return;
     }
 
     searchControls.hidden = false;
+    searchPageSize.value = String(searchRowsPerPage);
     const visible = visibleSearchUsers();
+    const totalPages = totalPageCount(visible.length, searchRowsPerPage);
+    searchPage = clampPage(searchPage, totalPages);
+    const start = (searchPage - 1) * searchRowsPerPage;
+    const pageUsers = visible.slice(start, start + searchRowsPerPage);
 
     searchResults.replaceChildren(
-        ...visible.flatMap((user, index) =>
+        ...pageUsers.flatMap((user, index) =>
             buildSteamUserRows(user, index, { includeGroups: true }),
         ),
     );
+    searchToolbar.hidden = false;
     searchResultsPanel.hidden = visible.length === 0;
+    searchCount.hidden = false;
+
+    if (visible.length === 0) {
+        searchCount.textContent = "No users match the current filters.";
+        searchPagination.replaceChildren();
+        return;
+    }
 
     const hiddenCount = searchUsers.length - visible.length;
+    const noun = visible.length === 1 ? "user" : "users";
+    searchCount.textContent = `Page ${searchPage} of ${totalPages} · ${formatCount(
+        visible.length,
+    )} ${noun}`;
     if (hiddenCount > 0) {
-        searchCount.textContent = `Showing ${visible.length} of ${searchUsers.length} users`;
-        searchCount.hidden = false;
-    } else {
-        searchCount.textContent = "";
-        searchCount.hidden = true;
+        searchCount.textContent += ` · ${formatCount(hiddenCount)} hidden by filters`;
     }
+    renderPagination(searchPagination, searchPage, totalPages, goToSearchPage);
+}
+
+function goToSearchPage(page) {
+    const totalPages = totalPageCount(
+        visibleSearchUsers().length,
+        searchRowsPerPage,
+    );
+    if (
+        !Number.isInteger(page) ||
+        page < 1 ||
+        page > totalPages ||
+        page === searchPage
+    ) {
+        return;
+    }
+    searchPage = page;
+    renderSearchPipeline();
 }
 
 function visibleSearchUsers() {
@@ -1358,6 +1431,7 @@ function resetSearchControls() {
     searchSort.value = "name";
     searchDirection.value = SEARCH_SORT_DEFAULT_DIRECTIONS.name;
     searchWishlist.value = "all";
+    searchPage = 1;
 }
 
 // Builds the main row and hidden details row for a Steam user, as shown in the
@@ -1645,8 +1719,10 @@ function clearGroupSearchResults() {
     searchGroupsResults.replaceChildren();
     searchGroupsResultsPanel.hidden = true;
     searchGroupsControls.hidden = true;
+    searchGroupsToolbar.hidden = true;
     searchGroupsCount.textContent = "";
     searchGroupsCount.hidden = true;
+    searchGroupsPagination.replaceChildren();
 }
 
 function renderGroupSearchResults() {
@@ -1660,16 +1736,49 @@ function renderGroupSearchResults() {
         searchGroupsSort.value,
         searchGroupsDirection.value,
     );
+    searchGroupsPageSize.value = String(searchGroupsRowsPerPage);
+    const totalPages = totalPageCount(visible.length, searchGroupsRowsPerPage);
+    searchGroupsPage = clampPage(searchGroupsPage, totalPages);
+    const start = (searchGroupsPage - 1) * searchGroupsRowsPerPage;
+    const pageGroups = visible.slice(start, start + searchGroupsRowsPerPage);
+
     searchGroupsResults.replaceChildren(
-        ...visible.flatMap((group, index) => buildGroupRows(group, index)),
+        ...pageGroups.flatMap((group, index) => buildGroupRows(group, index)),
     );
     searchGroupsControls.hidden = false;
+    searchGroupsToolbar.hidden = false;
     searchGroupsResultsPanel.hidden = false;
-    searchGroupsCount.textContent =
-        visible.length === 1
-            ? "1 group"
-            : `${formatCount(visible.length)} groups`;
     searchGroupsCount.hidden = false;
+    searchGroupsCount.textContent = `Page ${searchGroupsPage} of ${totalPages} · ${formatCount(
+        visible.length,
+    )} ${visible.length === 1 ? "group" : "groups"}`;
+    renderPagination(
+        searchGroupsPagination,
+        searchGroupsPage,
+        totalPages,
+        goToSearchGroupsPage,
+    );
+}
+
+function goToSearchGroupsPage(page) {
+    const totalPages = totalPageCount(
+        sortGroups(
+            searchGroups,
+            searchGroupsSort.value,
+            searchGroupsDirection.value,
+        ).length,
+        searchGroupsRowsPerPage,
+    );
+    if (
+        !Number.isInteger(page) ||
+        page < 1 ||
+        page > totalPages ||
+        page === searchGroupsPage
+    ) {
+        return;
+    }
+    searchGroupsPage = page;
+    renderGroupSearchResults();
 }
 
 // Returns a sorted copy. Ties fall back to name ascending, then group ID.
@@ -1695,6 +1804,7 @@ function sortGroups(groups, sort, direction) {
 function resetGroupSearchControls() {
     searchGroupsSort.value = "name";
     searchGroupsDirection.value = GROUP_SORT_DEFAULT_DIRECTIONS.name;
+    searchGroupsPage = 1;
 }
 
 // The status rule for a group, shared by every page that shows one.
@@ -2465,6 +2575,11 @@ function userPageSizeFromValue(value) {
     return APP_PAGE_SIZES.includes(number) ? number : 25;
 }
 
+function searchPageSizeFromValue(value) {
+    const number = Number(value);
+    return SEARCH_PAGE_SIZES.includes(number) ? number : 10;
+}
+
 function buildUserURL(name, list, page, pageSize) {
     const query = [
         `name=${encodeURIComponent(name)}`,
@@ -3219,18 +3334,22 @@ function safeExternalURL(value) {
 }
 
 function renderUserPagination(data) {
-    userPagination.replaceChildren();
-
     const current = parsePositiveInteger(data.page, 1);
     const totalPages = countValue(data.totalPages);
-    const hasPages = totalPages > 0;
+    renderPagination(userPagination, current, totalPages, goToUserPage);
+}
 
-    userPagination.append(
+function renderPagination(container, current, totalPages, goToPage) {
+    container.replaceChildren();
+
+    const hasPages = totalPages > 0;
+    container.append(
         paginationButton(
             "Previous",
             current - 1,
             current <= 1 || !hasPages,
             "Previous page",
+            goToPage,
         ),
     );
 
@@ -3243,7 +3362,7 @@ function renderUserPagination(data) {
                     "…",
                 );
                 ellipsis.setAttribute("aria-hidden", "true");
-                userPagination.append(ellipsis);
+                container.append(ellipsis);
                 continue;
             }
 
@@ -3252,32 +3371,45 @@ function renderUserPagination(data) {
                 item,
                 false,
                 `Page ${item}`,
+                goToPage,
             );
             if (item === current) {
                 button.setAttribute("aria-current", "page");
                 button.disabled = true;
             }
-            userPagination.append(button);
+            container.append(button);
         }
     }
 
-    userPagination.append(
+    container.append(
         paginationButton(
             "Next",
             current + 1,
             !hasPages || current >= totalPages,
             "Next page",
+            goToPage,
         ),
     );
 }
 
-function paginationButton(text, page, disabled, label) {
+function paginationButton(text, page, disabled, label, goToPage) {
     const button = newElement("button", "pagination__button", text);
     button.type = "button";
     button.disabled = disabled;
     button.setAttribute("aria-label", label);
-    button.addEventListener("click", () => goToUserPage(page));
+    button.addEventListener("click", () => goToPage(page));
     return button;
+}
+
+function totalPageCount(itemCount, pageSize) {
+    return itemCount === 0 ? 0 : Math.ceil(itemCount / pageSize);
+}
+
+function clampPage(page, totalPages) {
+    if (totalPages === 0) {
+        return 1;
+    }
+    return Math.min(Math.max(page, 1), totalPages);
 }
 
 function paginationItems(current, totalPages) {
