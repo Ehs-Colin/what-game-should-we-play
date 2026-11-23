@@ -52,9 +52,33 @@ func (handler *Handler) SearchSteamUsers(responseWriter http.ResponseWriter, req
 		return
 	}
 
+	groupsBySteamID := make(map[int64][]groupRefView)
+	if len(rows) > 0 {
+		steamIDs := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			steamIDs = append(steamIDs, row.SteamID)
+		}
+		groupRows, err := handler.apiStore.queries.ListGroupsForSteamUsers(request.Context(), steamIDs)
+		if err != nil {
+			handler.internalError(responseWriter, request, err)
+			return
+		}
+		for _, row := range groupRows {
+			groupsBySteamID[row.SteamID] = append(groupsBySteamID[row.SteamID], groupRefView{
+				GroupID: row.ID,
+				Name:    row.Name,
+			})
+		}
+	}
+
 	response := searchSteamUsersResponse{SteamUsers: make([]steamUserSummaryView, 0, len(rows))}
 	for _, row := range rows {
-		response.SteamUsers = append(response.SteamUsers, newSteamUserSummaryView(row))
+		user := newSteamUserSummaryView(row)
+		user.Groups = groupsBySteamID[row.SteamID]
+		if user.Groups == nil {
+			user.Groups = []groupRefView{}
+		}
+		response.SteamUsers = append(response.SteamUsers, user)
 	}
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
 }

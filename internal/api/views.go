@@ -139,21 +139,22 @@ func newCommonGameView(row dbgen.ListCommonGamesRow) commonGameView {
 }
 
 type steamUserSummaryView struct {
-	SteamID              string     `json:"steamId"`
-	Name                 string     `json:"name"`
-	WishlistPrivate      bool       `json:"wishlistPrivate"`
-	PersonaName          *string    `json:"personaName"`
-	ProfileURL           *string    `json:"profileUrl"`
-	Avatar               *string    `json:"avatar"`
-	AvatarMedium         *string    `json:"avatarMedium"`
-	AvatarFull           *string    `json:"avatarFull"`
-	OwnedAppCount        int64      `json:"ownedAppCount"`
-	WishlistAppCount     int64      `json:"wishlistAppCount"`
-	LatestImportStatus   *string    `json:"latestImportStatus"`
-	LatestImportFinished *time.Time `json:"latestImportFinishedAt"`
-	HasActiveJob         bool       `json:"hasActiveJob"`
-	HasSucceededImport   bool       `json:"hasSucceededImport"`
-	UpdatedAt            time.Time  `json:"updatedAt"`
+	SteamID              string         `json:"steamId"`
+	Name                 string         `json:"name"`
+	WishlistPrivate      bool           `json:"wishlistPrivate"`
+	PersonaName          *string        `json:"personaName"`
+	ProfileURL           *string        `json:"profileUrl"`
+	Avatar               *string        `json:"avatar"`
+	AvatarMedium         *string        `json:"avatarMedium"`
+	AvatarFull           *string        `json:"avatarFull"`
+	OwnedAppCount        int64          `json:"ownedAppCount"`
+	WishlistAppCount     int64          `json:"wishlistAppCount"`
+	LatestImportStatus   *string        `json:"latestImportStatus"`
+	LatestImportFinished *time.Time     `json:"latestImportFinishedAt"`
+	HasActiveJob         bool           `json:"hasActiveJob"`
+	HasSucceededImport   bool           `json:"hasSucceededImport"`
+	UpdatedAt            time.Time      `json:"updatedAt"`
+	Groups               []groupRefView `json:"groups"`
 }
 
 func newSteamUserSummaryView(row dbgen.SearchSteamUsersRow) steamUserSummaryView {
@@ -171,6 +172,7 @@ func newSteamUserSummaryView(row dbgen.SearchSteamUsersRow) steamUserSummaryView
 		HasActiveJob:       row.HasActiveJob,
 		HasSucceededImport: row.HasSucceededImport,
 		UpdatedAt:          row.UpdatedAt,
+		Groups:             []groupRefView{},
 	}
 	if row.LatestImportStatus.Valid {
 		view.LatestImportStatus = &row.LatestImportStatus.String

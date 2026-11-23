@@ -1243,7 +1243,9 @@ function renderSearchPipeline() {
     const visible = visibleSearchUsers();
 
     searchResults.replaceChildren(
-        ...visible.flatMap((user, index) => buildSteamUserRows(user, index)),
+        ...visible.flatMap((user, index) =>
+            buildSteamUserRows(user, index, { includeGroups: true }),
+        ),
     );
     searchResultsPanel.hidden = visible.length === 0;
 
@@ -1422,7 +1424,11 @@ function buildSteamUserRows(user, index, options = {}) {
 
     const details = newElement("div", "app-details");
     details.id = detailsID;
-    details.append(buildSearchResultDetails(user));
+    details.append(
+        buildSearchResultDetails(user, {
+            includeGroups: options.includeGroups === true,
+        }),
+    );
     detailsCell.append(details);
     detailsRow.append(detailsCell);
 
@@ -1471,7 +1477,7 @@ function buildExpandToggle(label, detailsID, detailsRow) {
     return expandCell;
 }
 
-function buildSearchResultDetails(user) {
+function buildSearchResultDetails(user, options = {}) {
     const details = newElement("dl", "details app-details__list");
     // Steam IDs exceed JavaScript's safe integer range, so keep them as text.
     details.append(
@@ -1480,7 +1486,33 @@ function buildSearchResultDetails(user) {
         detailRow("Personaname", user.personaName || "—"),
         buildProfileURLRow(user.profileUrl),
     );
+    if (options.includeGroups) {
+        details.append(buildUserGroupsDetailRow(user.groups));
+    }
     return details;
+}
+
+function buildUserGroupsDetailRow(groups) {
+    const visibleGroups = Array.isArray(groups) ? groups : [];
+    if (visibleGroups.length === 0) {
+        return detailRow("Groups", "—");
+    }
+
+    const row = newElement("div", "details__row details__row--chips");
+    const value = newElement("dd", "details__chips");
+    value.append(...visibleGroups.map(buildGroupChip));
+    row.append(newElement("dt", "", "Groups"), value);
+    return row;
+}
+
+// Reuses the Common Games chip styling so group chips look the same everywhere.
+function buildGroupChip(group) {
+    const chip = newElement("span", "query-users__chip");
+    const link = newElement("a", "query-users__name", group.name ?? "");
+    link.href = buildGroupURL(group.name);
+    link.dataset.route = "/group";
+    chip.append(link);
+    return chip;
 }
 
 function buildProfileURLRow(profileUrl) {

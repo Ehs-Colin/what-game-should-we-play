@@ -406,6 +406,46 @@ func (q *Queries) ListGroupsForSteamUser(ctx context.Context, steamID int64) ([]
 	return items, nil
 }
 
+const listGroupsForSteamUsers = `-- name: ListGroupsForSteamUsers :many
+SELECT
+    gm.steam_id,
+    g.id,
+    g.name
+FROM steam_user_group_members gm
+JOIN steam_user_groups g ON g.id = gm.group_id
+WHERE gm.steam_id = ANY($1::bigint[])
+ORDER BY gm.steam_id, g.name, g.id
+`
+
+type ListGroupsForSteamUsersRow struct {
+	SteamID int64  `json:"steam_id"`
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+}
+
+func (q *Queries) ListGroupsForSteamUsers(ctx context.Context, steamIds []int64) ([]ListGroupsForSteamUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGroupsForSteamUsers, pq.Array(steamIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGroupsForSteamUsersRow
+	for rows.Next() {
+		var i ListGroupsForSteamUsersRow
+		if err := rows.Scan(&i.SteamID, &i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeGroupMember = `-- name: RemoveGroupMember :execrows
 DELETE FROM steam_user_group_members
 WHERE group_id = $1

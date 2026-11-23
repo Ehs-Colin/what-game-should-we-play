@@ -412,6 +412,20 @@ select:disabled {
     text-align: left;
 }
 
+/* Groups: keep the chips on one line while they fit, then let the row grow. */
+.details__row--chips {
+    align-items: center;
+    padding-top: 0.18rem;
+    padding-bottom: 0.18rem;
+}
+
+.details__chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
 .details__row--avatar {
     justify-content: flex-start;
     padding-bottom: 0.65rem;
@@ -766,6 +780,26 @@ select:disabled {
 .app-table .app-expand-cell {
     width: 4.25rem;
     text-align: right;
+}
+
+#group-members-table th:nth-child(3),
+#group-members-table td:nth-child(3) {
+    text-align: right;
+}
+
+/* Keep the Remove button the same height as the expand button, and leave a
+   visible gap before the expand cell. */
+#group-members-table td:nth-child(3) {
+    padding-right: 1rem;
+}
+
+#group-members-table td:nth-child(3) button {
+    display: inline-flex;
+    height: 2.1rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.85rem;
+    line-height: 1;
 }
 
 .app-table th,
@@ -1227,6 +1261,10 @@ a.app-cell__name:hover {
 
     .details dd {
         text-align: left;
+    }
+
+    .details__chips {
+        justify-content: flex-start;
     }
 
     .result {

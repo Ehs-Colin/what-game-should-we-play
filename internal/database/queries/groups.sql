@@ -125,6 +125,16 @@ JOIN steam_user_group_members gm ON gm.group_id = g.id
 WHERE gm.steam_id = $1
 ORDER BY g.name, g.id;
 
+-- name: ListGroupsForSteamUsers :many
+SELECT
+    gm.steam_id,
+    g.id,
+    g.name
+FROM steam_user_group_members gm
+JOIN steam_user_groups g ON g.id = gm.group_id
+WHERE gm.steam_id = ANY(@steam_ids::bigint[])
+ORDER BY gm.steam_id, g.name, g.id;
+
 -- name: ListGroupMemberLookups :many
 SELECT
     gm.group_id,

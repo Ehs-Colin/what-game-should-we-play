@@ -269,6 +269,57 @@ func TestSearchSteamUsersPartialCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestSearchSteamUsersIncludesGroups(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	seedSteamUser(t, env, 1001, "GroupedPlayer")
+	seedSteamUser(t, env, 1002, "LonePlayer")
+	seedSteamUser(t, env, 1003, "NoGroupPlayer")
+	alpha := seedGroup(t, env, "Alpha", 1001)
+	bravo := seedGroup(t, env, "Bravo", 1001, 1002)
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers/search?name="+url.QueryEscape("player"), "")
+	requireStatus(t, recorder, http.StatusOK)
+
+	body := decodeJSON[searchSteamUsersResponse](t, recorder)
+	byName := summariesByName(body.SteamUsers)
+
+	wantGrouped := []groupRefView{
+		{GroupID: alpha.ID, Name: "Alpha"},
+		{GroupID: bravo.ID, Name: "Bravo"},
+	}
+	if !reflect.DeepEqual(byName["GroupedPlayer"].Groups, wantGrouped) {
+		t.Fatalf("GroupedPlayer groups = %+v, want %+v", byName["GroupedPlayer"].Groups, wantGrouped)
+	}
+	wantLone := []groupRefView{{GroupID: bravo.ID, Name: "Bravo"}}
+	if !reflect.DeepEqual(byName["LonePlayer"].Groups, wantLone) {
+		t.Fatalf("LonePlayer groups = %+v, want %+v", byName["LonePlayer"].Groups, wantLone)
+	}
+	if got := byName["NoGroupPlayer"].Groups; len(got) != 0 {
+		t.Fatalf("NoGroupPlayer groups = %+v, want empty", got)
+	}
+
+	// The frontend renders chips from this exact key, and expects an array even
+	// for users with no groups.
+	raw := decodeRawJSON(t, recorder)
+	var users []map[string]json.RawMessage
+	if err := json.Unmarshal(raw["steamUsers"], &users); err != nil {
+		t.Fatalf("decode steamUsers %s: %v", raw["steamUsers"], err)
+	}
+	for _, user := range users {
+		var name string
+		if err := json.Unmarshal(user["name"], &name); err != nil {
+			t.Fatalf("decode user name %s: %v", user["name"], err)
+		}
+		var groups []json.RawMessage
+		if err := json.Unmarshal(user["groups"], &groups); err != nil {
+			t.Fatalf("%s groups = %s, want a JSON array", name, user["groups"])
+		}
+		if name == "NoGroupPlayer" && string(user["groups"]) != "[]" {
+			t.Fatalf("NoGroupPlayer groups = %s, want []", user["groups"])
+		}
+	}
+}
+
 func TestSearchSteamUsersReturnsProfileFields(t *testing.T) {
 	env := newHandlerEnv(t, defaultResolver())
 
