@@ -4,7 +4,7 @@ Status: proposed
 
 ## Goal
 
-Add a Proxmox VE LXC installer and updater for Steam Decision Engine that follows
+Add a Proxmox VE LXC installer and updater for Game Picker Utility that follows
 the structure and behaviour of the community-scripts `ct/*.sh` and
 `install/*-install.sh` scripts:
 
@@ -19,19 +19,19 @@ deployment path. The Proxmox scripts are a native, no-Docker alternative.
 
 ## Decisions
 
-| Topic | Decision |
-| --- | --- |
-| Install source | Prebuilt release binary from GitHub Releases. No Go toolchain in the container. |
-| Script location | `deploy/proxmox/ct/wgswp.sh` and `deploy/proxmox/install/wgswp-install.sh`. |
-| Script audience | Self-hosted in this repository. Keep the code close enough to community-scripts that it can be submitted upstream later. |
-| Release pipeline | Tag-driven GitHub Actions workflow publishing `linux/amd64` and `linux/arm64` tarballs. |
-| Database | PostgreSQL 18 inside the container, installed with `setup_postgresql` from PGDG. |
-| First-run secrets | Prompt for the Steam API key and admin username; generate the bootstrap admin password and save it to `/root/wgswp.creds`. |
-| Network | Plain HTTP on `:3030`, `APP_ORIGIN=http://<container-ip>:3030`, `TRUSTED_PROXY_HOPS=0`. TLS is the operator's responsibility. |
-| Updates | Back up the database, update OS/PostgreSQL packages, deploy the new app release, health-check it, and roll back the app on failure. |
-| Architectures | amd64 and arm64. |
-| Container defaults | Debian 13, unprivileged, 1 vCPU, 1024 MiB RAM, 8 GiB disk. |
-| App slug | `WGSWP`. The framework derives `NSAPP=wgswp`, so the files are `ct/wgswp.sh` and `install/wgswp-install.sh`. |
+| Topic              | Decision                                                                                                                            |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Install source     | Prebuilt release binary from GitHub Releases. No Go toolchain in the container.                                                     |
+| Script location    | `deploy/proxmox/ct/wgswp.sh` and `deploy/proxmox/install/wgswp-install.sh`.                                                         |
+| Script audience    | Self-hosted in this repository. Keep the code close enough to community-scripts that it can be submitted upstream later.            |
+| Release pipeline   | Tag-driven GitHub Actions workflow publishing `linux/amd64` and `linux/arm64` tarballs.                                             |
+| Database           | PostgreSQL 18 inside the container, installed with `setup_postgresql` from PGDG.                                                    |
+| First-run secrets  | Prompt for the Steam API key and admin username; generate the bootstrap admin password and save it to `/root/wgswp.creds`.          |
+| Network            | Plain HTTP on `:3030`, `APP_ORIGIN=http://<container-ip>:3030`, `TRUSTED_PROXY_HOPS=0`. TLS is the operator's responsibility.       |
+| Updates            | Back up the database, update OS/PostgreSQL packages, deploy the new app release, health-check it, and roll back the app on failure. |
+| Architectures      | amd64 and arm64.                                                                                                                    |
+| Container defaults | Debian 13, unprivileged, 1 vCPU, 1024 MiB RAM, 8 GiB disk.                                                                          |
+| App slug           | `WGSWP`. The framework derives `NSAPP=wgswp`, so the files are `ct/wgswp.sh` and `install/wgswp-install.sh`.                        |
 
 ## Repository layout
 
@@ -65,17 +65,17 @@ application scripts come from this repository.
 
 Set these at the top of `ct/wgswp.sh`:
 
-| Variable | Value | Reason |
-| --- | --- | --- |
-| `APP` | `WGSWP` | Yields the `wgswp` slug and update entrypoint name. |
-| `var_tags` | `gaming;steam` | Matches the application domain. |
-| `var_cpu` | `1` | Plenty for one Go process plus PostgreSQL. |
-| `var_ram` | `1024` | PostgreSQL and the app fit comfortably; allows for Steam imports. |
-| `var_disk` | `8` | OS, PostgreSQL, binary, web assets, and database backups. |
-| `var_os` | `debian` | PostgreSQL 18 and systemd are well supported. |
-| `var_version` | `13` | Current stable Debian template. |
-| `var_arm64` | `yes` | The server is pure Go and PostgreSQL supports arm64. |
-| `var_unprivileged` | `1` | Default secure container type. |
+| Variable           | Value          | Reason                                                            |
+| ------------------ | -------------- | ----------------------------------------------------------------- |
+| `APP`              | `WGSWP`        | Yields the `wgswp` slug and update entrypoint name.               |
+| `var_tags`         | `gaming;steam` | Matches the application domain.                                   |
+| `var_cpu`          | `1`            | Plenty for one Go process plus PostgreSQL.                        |
+| `var_ram`          | `1024`         | PostgreSQL and the app fit comfortably; allows for Steam imports. |
+| `var_disk`         | `8`            | OS, PostgreSQL, binary, web assets, and database backups.         |
+| `var_os`           | `debian`       | PostgreSQL 18 and systemd are well supported.                     |
+| `var_version`      | `13`           | Current stable Debian template.                                   |
+| `var_arm64`        | `yes`          | The server is pure Go and PostgreSQL supports arm64.              |
+| `var_unprivileged` | `1`            | Default secure container type.                                    |
 
 Add optional non-interactive overrides so the installer can run unattended:
 
@@ -99,11 +99,11 @@ A pushed tag matching `v*.*.*`, for example `v1.0.0`.
 
 ### Assets
 
-| Asset | Contents |
-| --- | --- |
+| Asset                             | Contents                                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------------- |
 | `wgswp_v1.0.0_linux_amd64.tar.gz` | Top-level directory `wgswp_v1.0.0_linux_amd64/` containing `wgswp` and `web/public/**`. |
-| `wgswp_v1.0.0_linux_arm64.tar.gz` | Same layout, arm64 binary. |
-| `sha256sums.txt` | Checksums for both archives. |
+| `wgswp_v1.0.0_linux_arm64.tar.gz` | Same layout, arm64 binary.                                                              |
+| `sha256sums.txt`                  | Checksums for both archives.                                                            |
 
 Do not include `data/`, `.env`, credentials, or the source tree in the archive.
 The release archive is the runtime payload only.
@@ -156,17 +156,17 @@ next `check_for_gh_release` call. `CLEAN_INSTALL=1` removes stale files;
 
 ## Runtime layout
 
-| Path | Purpose |
-| --- | --- |
-| `/opt/wgswp/wgswp` | Application binary. |
-| `/opt/wgswp/web/public/` | Static frontend required at startup. |
-| `/opt/wgswp/data` | Symlink to `/var/lib/wgswp`. The server writes `data/wgswp.log` relative to its working directory. |
-| `/var/lib/wgswp/wgswp.log` | JSON application log. |
-| `/etc/wgswp/wgswp.env` | Environment file, `0600 root:root`. |
-| `/var/backups/wgswp/` | Database dumps and rollback copies, `0700 root:root`. |
-| `/root/wgswp.creds` | Generated credentials summary, `0600 root:root`. |
-| `/etc/systemd/system/wgswp.service` | systemd unit. |
-| `/etc/logrotate.d/wgswp` | Log rotation for the JSON log. |
+| Path                                | Purpose                                                                                            |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `/opt/wgswp/wgswp`                  | Application binary.                                                                                |
+| `/opt/wgswp/web/public/`            | Static frontend required at startup.                                                               |
+| `/opt/wgswp/data`                   | Symlink to `/var/lib/wgswp`. The server writes `data/wgswp.log` relative to its working directory. |
+| `/var/lib/wgswp/wgswp.log`          | JSON application log.                                                                              |
+| `/etc/wgswp/wgswp.env`              | Environment file, `0600 root:root`.                                                                |
+| `/var/backups/wgswp/`               | Database dumps and rollback copies, `0700 root:root`.                                              |
+| `/root/wgswp.creds`                 | Generated credentials summary, `0600 root:root`.                                                   |
+| `/etc/systemd/system/wgswp.service` | systemd unit.                                                                                      |
+| `/etc/logrotate.d/wgswp`            | Log rotation for the JSON log.                                                                     |
 
 Do **not** write an `.env` file into `/opt/wgswp`. `config.Load` reads an
 optional `.env` from the working directory before applying the process
@@ -254,11 +254,11 @@ Use `fetch_and_deploy_gh_release` as shown above. After it returns:
 
 The installer prompts for values unless they were supplied through `var_*`:
 
-| Value | Behaviour |
-| --- | --- |
-| Steam API key | Required. Hidden input with `read -r -s`. Warn, but do not abort, when the value is not 32 hex characters. |
+| Value          | Behaviour                                                                                                                                 |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Steam API key  | Required. Hidden input with `read -r -s`. Warn, but do not abort, when the value is not 32 hex characters.                                |
 | Admin username | Default `admin`. Validate against the app's policy: 3–64 characters, starts alphanumeric, then `A-Z a-z 0-9 . _ -`. Re-prompt on failure. |
-| Admin password | Generated with `random_password 24` unless `var_admin_password` is set. Enforce 12–128 characters for supplied values. |
+| Admin password | Generated with `random_password 24` unless `var_admin_password` is set. Enforce 12–128 characters for supplied values.                    |
 
 Display the generated admin password once at the end of installation and write
 all credentials to `/root/wgswp.creds` with mode `0600`.
@@ -307,7 +307,7 @@ Notes:
 
 ```ini
 [Unit]
-Description=Steam Decision Engine (WGSWP)
+Description=Game Picker Utility (WGSWP)
 Wants=network-online.target
 After=network-online.target postgresql.service
 Requires=postgresql.service
@@ -412,119 +412,119 @@ function update_script() {
 
 1. **Update Debian packages.**
 
-   ```bash
-   msg_info "Updating Debian Packages"
-   $STD apt-get update
-   $STD apt-get -y upgrade
-   msg_ok "Updated Debian Packages"
-   ```
+    ```bash
+    msg_info "Updating Debian Packages"
+    $STD apt-get update
+    $STD apt-get -y upgrade
+    msg_ok "Updated Debian Packages"
+    ```
 
-   Keep PostgreSQL at 18 and refresh its packages explicitly:
+    Keep PostgreSQL at 18 and refresh its packages explicitly:
 
-   ```bash
-   PG_VERSION="18" setup_postgresql
-   ```
+    ```bash
+    PG_VERSION="18" setup_postgresql
+    ```
 
-   A PostgreSQL package upgrade can restart PostgreSQL. If the app is still
-   running and no app update follows, restart `wgswp` after this step so its
-   connection pool is rebuilt, then verify `/health`.
+    A PostgreSQL package upgrade can restart PostgreSQL. If the app is still
+    running and no app update follows, restart `wgswp` after this step so its
+    connection pool is rebuilt, then verify `/health`.
 
 2. **Check for an application release.**
 
-   ```bash
-   if check_for_gh_release "wgswp" "Ehs-Colin/what-game-should-we-play"; then
-     ...
-   fi
-   ```
+    ```bash
+    if check_for_gh_release "wgswp" "Ehs-Colin/what-game-should-we-play"; then
+      ...
+    fi
+    ```
 
-   If no newer release exists, finish with "Updated successfully" after the OS
-   package step. Do not back up the database when there is no app update.
+    If no newer release exists, finish with "Updated successfully" after the OS
+    package step. Do not back up the database when there is no app update.
 
 3. **Back up the database before stopping the app.**
 
-   ```bash
-   install -d -m 0700 /var/backups/wgswp
-   PG_BIN="/usr/lib/postgresql/$(ls /usr/lib/postgresql | sort -V | tail -1)/bin"
-   dump="/var/backups/wgswp/wgswp-$(date +%Y%m%d-%H%M%S).dump"
-   runuser -u postgres -- "$PG_BIN/pg_dump" \
-     --format=custom --no-owner wgswp >"$dump" || {
-       rm -f "$dump"
-       msg_error "Database backup failed; aborting update"
-       return 1
-     }
-   chmod 600 "$dump"
-   ```
+    ```bash
+    install -d -m 0700 /var/backups/wgswp
+    PG_BIN="/usr/lib/postgresql/$(ls /usr/lib/postgresql | sort -V | tail -1)/bin"
+    dump="/var/backups/wgswp/wgswp-$(date +%Y%m%d-%H%M%S).dump"
+    runuser -u postgres -- "$PG_BIN/pg_dump" \
+      --format=custom --no-owner wgswp >"$dump" || {
+        rm -f "$dump"
+        msg_error "Database backup failed; aborting update"
+        return 1
+      }
+    chmod 600 "$dump"
+    ```
 
-   Resolve the installed PostgreSQL version rather than relying on
-   `/usr/bin/pg_dump`; `setup_postgresql` writes its PATH to `/etc/environment`,
-   which a non-login update shell may not inherit. The intended version is 18,
-   but the same command keeps working if PGDG falls back to a distro package.
-   The redirection is intentional: `pg_dump` runs as `postgres`, but the backup
-   directory is `0700 root:root`, so `postgres` writes to stdout and root owns
-   the resulting file. Keep the newest three dumps:
+    Resolve the installed PostgreSQL version rather than relying on
+    `/usr/bin/pg_dump`; `setup_postgresql` writes its PATH to `/etc/environment`,
+    which a non-login update shell may not inherit. The intended version is 18,
+    but the same command keeps working if PGDG falls back to a distro package.
+    The redirection is intentional: `pg_dump` runs as `postgres`, but the backup
+    directory is `0700 root:root`, so `postgres` writes to stdout and root owns
+    the resulting file. Keep the newest three dumps:
 
-   ```bash
-   ls -1t /var/backups/wgswp/wgswp-*.dump | tail -n +4 | xargs -r rm -f --
-   ```
+    ```bash
+    ls -1t /var/backups/wgswp/wgswp-*.dump | tail -n +4 | xargs -r rm -f --
+    ```
 
 4. **Save a rollback copy outside the deployment directory.**
 
-   ```bash
-   rm -rf /var/backups/wgswp/rollback
-   mkdir -p /var/backups/wgswp/rollback
-   cp -a /opt/wgswp/wgswp /var/backups/wgswp/rollback/wgswp
-   cp -a /opt/wgswp/web /var/backups/wgswp/rollback/web
-   PREVIOUS_VERSION="$(cat ~/.wgswp 2>/dev/null || true)"
-   ```
+    ```bash
+    rm -rf /var/backups/wgswp/rollback
+    mkdir -p /var/backups/wgswp/rollback
+    cp -a /opt/wgswp/wgswp /var/backups/wgswp/rollback/wgswp
+    cp -a /opt/wgswp/web /var/backups/wgswp/rollback/web
+    PREVIOUS_VERSION="$(cat ~/.wgswp 2>/dev/null || true)"
+    ```
 
 5. **Stop, deploy, start.**
 
-   ```bash
-   systemctl stop wgswp
-   CLEAN_INSTALL=1 CLEAN_INSTALL_KEEP="data" \
-     fetch_and_deploy_gh_release "wgswp" \
-       "Ehs-Colin/what-game-should-we-play" "prebuild" "latest" \
-       "/opt/wgswp" "wgswp_*_linux_$(arch_resolve amd64 arm64).tar.gz"
-   chown -R wgswp:wgswp /opt/wgswp
-   chown -h wgswp:wgswp /opt/wgswp/data
-   systemctl start wgswp
-   ```
+    ```bash
+    systemctl stop wgswp
+    CLEAN_INSTALL=1 CLEAN_INSTALL_KEEP="data" \
+      fetch_and_deploy_gh_release "wgswp" \
+        "Ehs-Colin/what-game-should-we-play" "prebuild" "latest" \
+        "/opt/wgswp" "wgswp_*_linux_$(arch_resolve amd64 arm64).tar.gz"
+    chown -R wgswp:wgswp /opt/wgswp
+    chown -h wgswp:wgswp /opt/wgswp/data
+    systemctl start wgswp
+    ```
 
-   Migrations are embedded in the binary and run automatically on startup, so
-   the new schema is applied before the service reports healthy.
+    Migrations are embedded in the binary and run automatically on startup, so
+    the new schema is applied before the service reports healthy.
 
 6. **Health-check and roll back on failure.**
 
-   ```bash
-   healthy=0
-   for _ in $(seq 1 30); do
-     if curl -fsS --max-time 5 http://127.0.0.1:3030/health >/dev/null; then
-       healthy=1
-       break
-     fi
-     sleep 2
-   done
-   ```
+    ```bash
+    healthy=0
+    for _ in $(seq 1 30); do
+      if curl -fsS --max-time 5 http://127.0.0.1:3030/health >/dev/null; then
+        healthy=1
+        break
+      fi
+      sleep 2
+    done
+    ```
 
-   On failure (`healthy=0`), or if `fetch_and_deploy_gh_release` itself fails:
+    On failure (`healthy=0`), or if `fetch_and_deploy_gh_release` itself fails:
 
-   - stop the service,
-   - restore `wgswp` and `web` from `/var/backups/wgswp/rollback`,
-   - restore `~/.wgswp` to `PREVIOUS_VERSION` so the next update retries; if
-     there was no previous version stamp, remove the file instead,
-   - start the service and report the failure with the database dump path.
+    - stop the service,
+    - restore `wgswp` and `web` from `/var/backups/wgswp/rollback`,
+    - restore `~/.wgswp` to `PREVIOUS_VERSION` so the next update retries; if
+      there was no previous version stamp, remove the file instead,
+    - start the service and report the failure with the database dump path.
 
-   Migrations are forward-only. If the failed release already changed the
-   schema in an incompatible way, automatic rollback is not sufficient; the
-   operator must restore the dump with `pg_restore` and start the previous
-   binary. The update output must say this explicitly rather than pretending the
-   rollback is complete.
+    Migrations are forward-only. If the failed release already changed the
+    schema in an incompatible way, automatic rollback is not sufficient; the
+    operator must restore the dump with `pg_restore` and start the previous
+    binary. The update output must say this explicitly rather than pretending the
+    rollback is complete.
 
 7. **Verify data and service persistence.**
 
-   Confirm `/health` returns 200, `systemctl is-active wgswp` is `active`, and
-   `/var/lib/wgswp/wgswp.log` still receives records. The `data` symlink and
-   `/etc/wgswp/wgswp.env` must survive `CLEAN_INSTALL`.
+    Confirm `/health` returns 200, `systemctl is-active wgswp` is `active`, and
+    `/var/lib/wgswp/wgswp.log` still receives records. The `data` symlink and
+    `/etc/wgswp/wgswp.env` must survive `CLEAN_INSTALL`.
 
 ## Security and operational notes
 
