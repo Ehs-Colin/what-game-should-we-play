@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -54,35 +55,49 @@ func (handler *Handler) SearchSteamUsers(responseWriter http.ResponseWriter, req
 		return
 	}
 
-	groupsBySteamID := make(map[int64][]groupRefView)
-	if len(rows) > 0 {
-		steamIDs := make([]int64, 0, len(rows))
-		for _, row := range rows {
-			steamIDs = append(steamIDs, row.SteamID)
-		}
-		groupRows, err := handler.apiStore.queries.ListGroupsForSteamUsers(request.Context(), steamIDs)
-		if err != nil {
-			handler.internalError(responseWriter, request, err)
-			return
-		}
-		for _, row := range groupRows {
-			groupsBySteamID[row.SteamID] = append(groupsBySteamID[row.SteamID], groupRefView{
-				GroupID: row.ID,
-				Name:    row.Name,
-			})
-		}
+	steamIDs := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		steamIDs = append(steamIDs, row.SteamID)
+	}
+	groupsBySteamID, err := handler.groupsBySteamID(request.Context(), steamIDs)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
 	}
 
 	response := searchSteamUsersResponse{SteamUsers: make([]steamUserSummaryView, 0, len(rows))}
 	for _, row := range rows {
 		user := newSteamUserSummaryView(row)
 		user.Groups = groupsBySteamID[row.SteamID]
-		if user.Groups == nil {
-			user.Groups = []groupRefView{}
-		}
 		response.SteamUsers = append(response.SteamUsers, user)
 	}
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
+}
+
+// groupsBySteamID maps Steam IDs to the group references shown on
+// steamUserSummaryView rows. Every requested ID is present in the result,
+// empty when the user joins no groups, so callers can assign it directly.
+// The Search Users and View Group handlers share it so their member rows
+// stay identical.
+func (handler *Handler) groupsBySteamID(ctx context.Context, steamIDs []int64) (map[int64][]groupRefView, error) {
+	groups := make(map[int64][]groupRefView, len(steamIDs))
+	for _, steamID := range steamIDs {
+		groups[steamID] = []groupRefView{}
+	}
+	if len(steamIDs) == 0 {
+		return groups, nil
+	}
+	rows, err := handler.apiStore.queries.ListGroupsForSteamUsers(ctx, steamIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		groups[row.SteamID] = append(groups[row.SteamID], groupRefView{
+			GroupID: row.ID,
+			Name:    row.Name,
+		})
+	}
+	return groups, nil
 }
 
 func (handler *Handler) GetSteamUsersByIDs(responseWriter http.ResponseWriter, request *http.Request) {
