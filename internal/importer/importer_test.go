@@ -1266,3 +1266,184 @@ func shutdown(t *testing.T, importer *Importer) {
 		t.Errorf("Shutdown: %v", err)
 	}
 }
+
+// finishJobAt closes a job with the given status and finished_at time.
+func (env *testEnv) finishJobAt(t *testing.T, id int64, status string, at time.Time) {
+	t.Helper()
+	if _, err := env.queries.FinishImportJob(context.Background(), dbgen.FinishImportJobParams{
+		Status:     status,
+		FinishedAt: sql.NullTime{Time: at, Valid: true},
+		ID:         id,
+	}); err != nil {
+		t.Fatalf("finish job: %v", err)
+	}
+}
+
+func TestSnapshotNotImported(t *testing.T) {
+	env := newTestEnv(t)
+
+	snapshot, err := env.importer.Snapshot(context.Background(), testSteamID)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if snapshot.State != StateNotImported || snapshot.Latest != nil || snapshot.HasActiveJob {
+		t.Fatalf("snapshot = %+v, want not_imported with no job", snapshot)
+	}
+	if got := len(env.importer.jobs); got != 0 {
+		t.Fatalf("Snapshot enqueued %d jobs, want 0", got)
+	}
+}
+
+func TestSnapshotActiveJobs(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	id := env.createJob(t, testSteamID)
+
+	snapshot, err := env.importer.Snapshot(ctx, testSteamID)
+	if err != nil {
+		t.Fatalf("Snapshot queued: %v", err)
+	}
+	if snapshot.State != StateQueued || !snapshot.HasActiveJob || snapshot.Latest == nil || snapshot.Latest.ID != id {
+		t.Fatalf("queued snapshot = %+v, want queued job %d", snapshot, id)
+	}
+
+	if _, err := env.queries.MarkImportJobRunning(ctx, dbgen.MarkImportJobRunningParams{
+		StartedAt: sql.NullTime{Time: env.clock.Now(), Valid: true},
+		ID:        id,
+	}); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	snapshot, err = env.importer.Snapshot(ctx, testSteamID)
+	if err != nil {
+		t.Fatalf("Snapshot running: %v", err)
+	}
+	if snapshot.State != StateRunning || !snapshot.HasActiveJob || snapshot.Latest == nil || snapshot.Latest.ID != id {
+		t.Fatalf("running snapshot = %+v, want running job %d", snapshot, id)
+	}
+	if got := len(env.importer.jobs); got != 0 {
+		t.Fatalf("Snapshot enqueued %d jobs, want 0", got)
+	}
+}
+
+func TestSnapshotUpToDate(t *testing.T) {
+	env := newTestEnv(t)
+	id := env.createJob(t, testSteamID)
+	env.finishJobAt(t, id, StatusSucceeded, env.clock.Now())
+
+	snapshot, err := env.importer.Snapshot(context.Background(), testSteamID)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if snapshot.State != StateUpToDate || snapshot.HasActiveJob || snapshot.Latest == nil || snapshot.Latest.ID != id {
+		t.Fatalf("snapshot = %+v, want up_to_date job %d", snapshot, id)
+	}
+}
+
+func TestSnapshotOutOfDate(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, env *testEnv) int64
+	}{
+		{
+			name: "stale success",
+			prepare: func(t *testing.T, env *testEnv) int64 {
+				id := env.createJob(t, testSteamID)
+				env.finishJobAt(t, id, StatusSucceeded, env.clock.Now())
+				env.clock.Advance(testRefreshInterval + time.Minute)
+				return id
+			},
+		},
+		{
+			name: "success without finished_at",
+			prepare: func(t *testing.T, env *testEnv) int64 {
+				id := env.createJob(t, testSteamID)
+				if _, err := env.db.Exec(
+					"UPDATE import_jobs SET status = $1 WHERE id = $2", StatusSucceeded, id,
+				); err != nil {
+					t.Fatalf("mark succeeded: %v", err)
+				}
+				return id
+			},
+		},
+		{
+			name: "failed latest beats earlier success",
+			prepare: func(t *testing.T, env *testEnv) int64 {
+				success := env.createJob(t, testSteamID)
+				env.finishJobAt(t, success, StatusSucceeded, env.clock.Now())
+				failed := env.createJob(t, testSteamID)
+				env.clock.Advance(time.Minute)
+				env.finishJobAt(t, failed, StatusFailed, env.clock.Now())
+				return failed
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			want := test.prepare(t, env)
+
+			snapshot, err := env.importer.Snapshot(context.Background(), testSteamID)
+			if err != nil {
+				t.Fatalf("Snapshot: %v", err)
+			}
+			if snapshot.State != StateOutOfDate || snapshot.HasActiveJob {
+				t.Fatalf("snapshot state = %q, active %v, want out_of_date inactive", snapshot.State, snapshot.HasActiveJob)
+			}
+			if snapshot.Latest == nil || snapshot.Latest.ID != want {
+				t.Fatalf("latest = %+v, want job %d", snapshot.Latest, want)
+			}
+			if got := len(env.importer.jobs); got != 0 {
+				t.Fatalf("Snapshot enqueued %d jobs, want 0", got)
+			}
+		})
+	}
+}
+
+func TestRequestForcedImportFreshSuccess(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	original := env.createJob(t, testSteamID)
+	env.finishJobAt(t, original, StatusSucceeded, env.clock.Now())
+
+	// The non-forced path keeps its fresh-success shortcut.
+	reused, created, err := env.importer.RequestImport(ctx, testSteamID)
+	if err != nil || created || reused.ID != original {
+		t.Fatalf("RequestImport fresh: id %d, created %v, err %v", reused.ID, created, err)
+	}
+
+	// The forced path ignores the shortcut and starts a new job.
+	forced, created, err := env.importer.RequestForcedImport(ctx, testSteamID)
+	if err != nil {
+		t.Fatalf("RequestForcedImport: %v", err)
+	}
+	if !created || forced.ID == original || forced.Status != StatusQueued {
+		t.Fatalf("forced job = %+v, created %v, want a new queued job", forced, created)
+	}
+	if got := len(env.importer.jobs); got != 1 {
+		t.Fatalf("queued %d jobs, want 1", got)
+	}
+}
+
+func TestRequestForcedImportReusesActiveJob(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	active := env.createJob(t, testSteamID)
+
+	forced, created, err := env.importer.RequestForcedImport(ctx, testSteamID)
+	if err != nil {
+		t.Fatalf("RequestForcedImport: %v", err)
+	}
+	if created || forced.ID != active {
+		t.Fatalf("forced job = %+v, created %v, want active job %d reused", forced, created, active)
+	}
+	if got := len(env.importer.jobs); got != 0 {
+		t.Fatalf("queued %d jobs, want 0", got)
+	}
+	jobs, err := env.queries.ListUnfinishedImportJobs(ctx)
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("%d unfinished jobs, want 1", len(jobs))
+	}
+}

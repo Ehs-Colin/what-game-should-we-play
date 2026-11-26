@@ -1,8 +1,12 @@
 # Import Steam User page: lookup, status, and actions
 
-Status: proposed
+Status: completed
 
 Date: 2026-11-25
+
+## original prompt
+
+Make a plan to update the Import Steam User page to separate finding info about a steam user and starting the import process. When look up is selected, the steam user is looked up in the database first. If the user has been imported or is awaiting import, the status of their import should be displayed. If the user is out of date, there should be an "Update user" button that updates their information with a new import. If the user has not been imported, there should be an "Import User" button that begins the import process. Ask questions for unresolved issues. After all questions are answered, write the plan to agents/plans.
 
 ## Goal
 
@@ -22,19 +26,19 @@ path, and the matching UI states.
 
 ## Decisions
 
-| Topic                  | Decision                                                                                                                                                              |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Lookup miss            | Search the database first. If the name is unknown, resolve it with Steam **read-only** and show a preview. Nothing is written to `steam_users` and no job is queued.     |
-| Renamed vanity         | If the name misses but the resolved Steam ID is already stored under another name, return that row's status. Importing or updating reconciles the stored name.         |
-| Staleness              | A user is out of date when the latest successful import is older than `STEAM_REFRESH_INTERVAL`, or when the latest import attempt failed.                              |
-| Never imported         | A stored row with no import jobs (or a Steam preview) shows `Import User`. A row whose latest attempt failed shows `Update user`, per the failed-attempt decision below. |
-| Failed import          | The action is labelled `Update user` and forces a new import.                                                                                                         |
-| Update semantics       | `Update user` always forces a new job when no job is active, bypassing the refresh-interval shortcut.                                                                  |
-| Active job             | If a job is already queued or running, `Update user` reuses it instead of creating a duplicate.                                                                       |
-| Awaiting import        | A lookup that finds a queued or running job shows its status/progress, polls every 2 seconds, and hides both action buttons until the job finishes.                    |
-| Result detail          | Full summary: avatar, Steam name, Steam ID, persona name, source, owned/wishlist counts, last import time/status, and error when present.                             |
-| Preview safety         | The UI sends the previewed `steamId` with Import/Update. The server rejects the request with `409` if the name now resolves to a different Steam ID.                  |
-| State ownership        | The server computes the import state so the refresh interval is authoritative. The browser does not re-derive staleness from its own clock.                           |
+| Topic            | Decision                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Lookup miss      | Search the database first. If the name is unknown, resolve it with Steam **read-only** and show a preview. Nothing is written to `steam_users` and no job is queued.     |
+| Renamed vanity   | If the name misses but the resolved Steam ID is already stored under another name, return that row's status. Importing or updating reconciles the stored name.           |
+| Staleness        | A user is out of date when the latest successful import is older than `STEAM_REFRESH_INTERVAL`, or when the latest import attempt failed.                                |
+| Never imported   | A stored row with no import jobs (or a Steam preview) shows `Import User`. A row whose latest attempt failed shows `Update user`, per the failed-attempt decision below. |
+| Failed import    | The action is labelled `Update user` and forces a new import.                                                                                                            |
+| Update semantics | `Update user` always forces a new job when no job is active, bypassing the refresh-interval shortcut.                                                                    |
+| Active job       | If a job is already queued or running, `Update user` reuses it instead of creating a duplicate.                                                                          |
+| Awaiting import  | A lookup that finds a queued or running job shows its status/progress, polls every 2 seconds, and hides both action buttons until the job finishes.                      |
+| Result detail    | Full summary: avatar, Steam name, Steam ID, persona name, source, owned/wishlist counts, last import time/status, and error when present.                                |
+| Preview safety   | The UI sends the previewed `steamId` with Import/Update. The server rejects the request with `409` if the name now resolves to a different Steam ID.                     |
+| State ownership  | The server computes the import state so the refresh interval is authoritative. The browser does not re-derive staleness from its own clock.                              |
 
 ## Current behaviour
 
@@ -96,13 +100,13 @@ the input available for another attempt.
 The server returns one of five states. The state controls the badge, status
 text, and action.
 
-| State          | Condition                                                                                       | Badge       | Action        |
-| -------------- | ----------------------------------------------------------------------------------------------- | ----------- | ------------- |
-| `not_imported` | No `steam_users` row, or a row with no import jobs                                              | Not imported | `Import User` |
-| `queued`       | An active job with status `queued`                                                              | Queued      | None          |
-| `running`      | An active job with status `running`                                                             | Importing   | None          |
-| `up_to_date`   | Latest job `succeeded`, `finished_at` is set, and `now - finished_at < refreshInterval`          | Up to date  | None          |
-| `out_of_date`  | Latest job `failed`, or latest job `succeeded` but stale or missing `finished_at`                | Out of date | `Update user` |
+| State          | Condition                                                                               | Badge        | Action        |
+| -------------- | --------------------------------------------------------------------------------------- | ------------ | ------------- |
+| `not_imported` | No `steam_users` row, or a row with no import jobs                                      | Not imported | `Import User` |
+| `queued`       | An active job with status `queued`                                                      | Queued       | None          |
+| `running`      | An active job with status `running`                                                     | Importing    | None          |
+| `up_to_date`   | Latest job `succeeded`, `finished_at` is set, and `now - finished_at < refreshInterval` | Up to date   | None          |
+| `out_of_date`  | Latest job `failed`, or latest job `succeeded` but stale or missing `finished_at`       | Out of date  | `Update user` |
 
 A successful job that has only just finished is treated as `up_to_date`. A
 `failed` latest attempt always wins over an earlier success.
@@ -123,40 +127,40 @@ Database hit:
 
 ```json
 {
-  "steamUser": {
-    "steamId": "76561197960287930",
-    "name": "gaben",
-    "wishlistPrivate": false,
-    "personaName": "Gabe Newell",
-    "profileUrl": "https://steamcommunity.com/id/gaben/",
-    "avatar": "https://cdn.example/avatar.jpg",
-    "avatarMedium": "https://cdn.example/avatar_medium.jpg",
-    "avatarFull": "https://cdn.example/avatar_full.jpg",
-    "createdAt": "2026-11-01T12:00:00Z",
-    "updatedAt": "2026-11-01T12:00:00Z"
-  },
-  "source": "database",
-  "importState": "out_of_date",
-  "latestImport": {
-    "id": 42,
-    "steamId": "76561197960287930",
-    "status": "succeeded",
-    "totalApps": 100,
-    "processedApps": 100,
-    "skippedApps": 2,
-    "failedApps": 0,
-    "wishlistTotalApps": 12,
-    "wishlistProcessedApps": 12,
-    "wishlistSkippedApps": 0,
-    "wishlistFailedApps": 0,
-    "error": null,
-    "createdAt": "2026-11-15T12:00:00Z",
-    "startedAt": "2026-11-15T12:00:01Z",
-    "finishedAt": "2026-11-15T12:03:00Z"
-  },
-  "hasActiveJob": false,
-  "ownedAppCount": 321,
-  "wishlistAppCount": 12
+    "steamUser": {
+        "steamId": "76561197960287930",
+        "name": "gaben",
+        "wishlistPrivate": false,
+        "personaName": "Gabe Newell",
+        "profileUrl": "https://steamcommunity.com/id/gaben/",
+        "avatar": "https://cdn.example/avatar.jpg",
+        "avatarMedium": "https://cdn.example/avatar_medium.jpg",
+        "avatarFull": "https://cdn.example/avatar_full.jpg",
+        "createdAt": "2026-11-01T12:00:00Z",
+        "updatedAt": "2026-11-01T12:00:00Z"
+    },
+    "source": "database",
+    "importState": "out_of_date",
+    "latestImport": {
+        "id": 42,
+        "steamId": "76561197960287930",
+        "status": "succeeded",
+        "totalApps": 100,
+        "processedApps": 100,
+        "skippedApps": 2,
+        "failedApps": 0,
+        "wishlistTotalApps": 12,
+        "wishlistProcessedApps": 12,
+        "wishlistSkippedApps": 0,
+        "wishlistFailedApps": 0,
+        "error": null,
+        "createdAt": "2026-11-15T12:00:00Z",
+        "startedAt": "2026-11-15T12:00:01Z",
+        "finishedAt": "2026-11-15T12:03:00Z"
+    },
+    "hasActiveJob": false,
+    "ownedAppCount": 321,
+    "wishlistAppCount": 12
 }
 ```
 
@@ -164,22 +168,22 @@ Steam preview (nothing stored):
 
 ```json
 {
-  "steamUser": {
-    "steamId": "76561197960287930",
-    "name": "gaben",
-    "wishlistPrivate": false,
-    "personaName": "Gabe Newell",
-    "profileUrl": "https://steamcommunity.com/id/gaben/",
-    "avatar": "https://cdn.example/avatar.jpg",
-    "avatarMedium": "https://cdn.example/avatar_medium.jpg",
-    "avatarFull": "https://cdn.example/avatar_full.jpg"
-  },
-  "source": "steam",
-  "importState": "not_imported",
-  "latestImport": null,
-  "hasActiveJob": false,
-  "ownedAppCount": null,
-  "wishlistAppCount": null
+    "steamUser": {
+        "steamId": "76561197960287930",
+        "name": "gaben",
+        "wishlistPrivate": false,
+        "personaName": "Gabe Newell",
+        "profileUrl": "https://steamcommunity.com/id/gaben/",
+        "avatar": "https://cdn.example/avatar.jpg",
+        "avatarMedium": "https://cdn.example/avatar_medium.jpg",
+        "avatarFull": "https://cdn.example/avatar_full.jpg"
+    },
+    "source": "steam",
+    "importState": "not_imported",
+    "latestImport": null,
+    "hasActiveJob": false,
+    "ownedAppCount": null,
+    "wishlistAppCount": null
 }
 ```
 
@@ -222,9 +226,9 @@ Extend the request body:
 
 ```json
 {
-  "vanityUrl": "gaben",
-  "steamId": "76561197960287930",
-  "force": true
+    "vanityUrl": "gaben",
+    "steamId": "76561197960287930",
+    "force": true
 }
 ```
 
@@ -240,7 +244,7 @@ Validation and behaviour:
    resolve, return `404`.
 3. If `steamId` was supplied and differs from the resolved ID, return `409`
    with `The Steam name now resolves to a different user. Look up the user
-   again.` Do not write anything.
+again.` Do not write anything.
 4. Fetch the player summary and upsert the profile as today.
 5. `force == true` calls `RequestForcedImport`; otherwise `RequestImport`.
 6. Return `202` with `Location` when a job was created, or `200` when an active
@@ -306,38 +310,38 @@ Update `ImportRequester` in `internal/api/import_handler.go` to include
 ## Backend implementation
 
 1. **`internal/importer/importer.go`**
-   - Add `ImportState`, `ImportSnapshot`, `Snapshot`, and
-     `RequestForcedImport`.
-   - Refactor `RequestImport` to use a private `requestImport` with a `force`
-     flag.
+    - Add `ImportState`, `ImportSnapshot`, `Snapshot`, and
+      `RequestForcedImport`.
+    - Refactor `RequestImport` to use a private `requestImport` with a `force`
+      flag.
 2. **`internal/api/steam_resolution.go`** (new)
-   - Add `var errSteamUserNotFound = errors.New("steam user not found")`.
-   - Add `resolveSteamPlayer(ctx, vanityURL) (int64, steamapi.PlayerSummary, error)`.
-   - Map Steam's `Success != 1` and an empty player list to
-     `errSteamUserNotFound`; wrap transport/API errors for `500`.
-   - Reuse this helper from both lookup and insert so the resolution rules stay
-     in one place.
+    - Add `var errSteamUserNotFound = errors.New("steam user not found")`.
+    - Add `resolveSteamPlayer(ctx, vanityURL) (int64, steamapi.PlayerSummary, error)`.
+    - Map Steam's `Success != 1` and an empty player list to
+      `errSteamUserNotFound`; wrap transport/API errors for `500`.
+    - Reuse this helper from both lookup and insert so the resolution rules stay
+      in one place.
 3. **`internal/api/steam_user_handler.go`**
-   - Replace the body of `GetSteamUserByName` with the lookup algorithm above.
-   - Add `steamUserLookupResponse` with `source`, `importState`,
-     `latestImport`, `hasActiveJob`, and pointer counts.
-   - Add a preview constructor that builds `steamUserView` from the typed name
-     and `steamapi.PlayerSummary` with nil timestamps.
-   - Count active owned and wishlist apps with the existing
-     `CountActiveSteamUserApps` and `CountActiveSteamUserWishlist` queries.
+    - Replace the body of `GetSteamUserByName` with the lookup algorithm above.
+    - Add `steamUserLookupResponse` with `source`, `importState`,
+      `latestImport`, `hasActiveJob`, and pointer counts.
+    - Add a preview constructor that builds `steamUserView` from the typed name
+      and `steamapi.PlayerSummary` with nil timestamps.
+    - Count active owned and wishlist apps with the existing
+      `CountActiveSteamUserApps` and `CountActiveSteamUserWishlist` queries.
 4. **`internal/api/import_handler.go`**
-   - Add `SteamID string` and `Force bool` to `insertSteamUserRequest`.
-   - Validate the optional ID and enforce the `409` identity check.
-   - Call `RequestForcedImport` when `force` is true.
-   - Use the shared resolver helper so the insert path cannot drift from the
-     lookup path.
+    - Add `SteamID string` and `Force bool` to `insertSteamUserRequest`.
+    - Validate the optional ID and enforce the `409` identity check.
+    - Call `RequestForcedImport` when `force` is true.
+    - Use the shared resolver helper so the insert path cannot drift from the
+      lookup path.
 5. **`internal/api/views.go`**
-   - Change `steamUserView.CreatedAt` / `UpdatedAt` to `*time.Time` with
-     `omitempty`.
-   - Keep `newSteamUserView` returning pointers to the timestamps.
+    - Change `steamUserView.CreatedAt` / `UpdatedAt` to `*time.Time` with
+      `omitempty`.
+    - Keep `newSteamUserView` returning pointers to the timestamps.
 6. **`internal/httpserver/app.go`**
-   - No route changes. The existing `GET /api/steamusers` and
-     `POST /api/steamuser` routes now return the extended payloads.
+    - No route changes. The existing `GET /api/steamusers` and
+      `POST /api/steamuser` routes now return the extended payloads.
 
 ## Frontend implementation
 
@@ -348,23 +352,23 @@ Keep the lookup form. Replace the current result panel contents with:
 - A heading row with the section title and
   `<span id="result-status-badge" class="badge" data-status="none"></span>`.
 - A details list containing:
-  - avatar row (`#result-avatar-row`, `#result-avatar`), hidden when the
-    profile has no avatar;
-  - Steam name (`#result-name`);
-  - Steam ID (`#steam-id`);
-  - persona name (`#result-persona`);
-  - source (`#result-source`);
-  - owned apps (`#result-owned`);
-  - wishlist apps (`#result-wishlist`);
-  - last import (`#result-last-import`).
+    - avatar row (`#result-avatar-row`, `#result-avatar`), hidden when the
+      profile has no avatar;
+    - Steam name (`#result-name`);
+    - Steam ID (`#steam-id`);
+    - persona name (`#result-persona`);
+    - source (`#result-source`);
+    - owned apps (`#result-owned`);
+    - wishlist apps (`#result-wishlist`);
+    - last import (`#result-last-import`).
 - A conditional `<p id="result-import-error" class="error" hidden>`.
 - An action row:
-  ```html
-  <div id="result-actions" class="panel__actions" hidden>
-      <button id="import-button" type="button">Import User</button>
-      <button id="update-button" type="button" hidden>Update user</button>
-  </div>
-  ```
+    ```html
+    <div id="result-actions" class="panel__actions" hidden>
+        <button id="import-button" type="button">Import User</button>
+        <button id="update-button" type="button" hidden>Update user</button>
+    </div>
+    ```
 
 Keep the existing job panel and its progress/skipped/failed/error fields. It is
 shown for a newly started job and for a job found by lookup; after completion it
@@ -400,13 +404,13 @@ the normalized typed name.
 - Render the summary: avatar, names, ID, source text, counts (`—` for `null`),
   last import, and the status badge.
 - Render the state:
-  - `not_imported` → show `Import User`, hide `Update user`, hide the job panel.
-  - `out_of_date` → show `Update user`, hide `Import User`, hide the job panel
-    unless `options.keepJob` is set.
-  - `queued` / `running` → hide both buttons, render `latestImport`, and call
-    `startPolling(latestImport, token)`.
-  - `up_to_date` → hide both buttons and the job panel unless
-    `options.keepJob` is set.
+    - `not_imported` → show `Import User`, hide `Update user`, hide the job panel.
+    - `out_of_date` → show `Update user`, hide `Import User`, hide the job panel
+      unless `options.keepJob` is set.
+    - `queued` / `running` → hide both buttons, render `latestImport`, and call
+      `startPolling(latestImport, token)`.
+    - `up_to_date` → hide both buttons and the job panel unless
+      `options.keepJob` is set.
 - Set the status text from the state and the latest job (see below).
 
 **`startImport(force)`**
@@ -416,14 +420,14 @@ the normalized typed name.
 - `setBusy(true)` and disable the action buttons.
 - `POST /api/steamuser` with `{vanityUrl, steamId, force}`.
 - On success:
-  - update `currentLookup.steamUser` from the response;
-  - set `source = "database"`;
-  - set `latestImport = body.importJob`;
-  - set `importState` from the job status;
-  - render the summary and state (which hides both buttons);
-  - render the job panel;
-  - if the job is terminal, run the terminal handler; otherwise call
-    `startPolling(body.importJob, token)`.
+    - update `currentLookup.steamUser` from the response;
+    - set `source = "database"`;
+    - set `latestImport = body.importJob`;
+    - set `importState` from the job status;
+    - render the summary and state (which hides both buttons);
+    - render the job panel;
+    - if the job is terminal, run the terminal handler; otherwise call
+      `startPolling(body.importJob, token)`.
 - `409` → show the server message and ask the user to look up again.
 - `404` → show the server message.
 - Other errors → existing `readError` handling.
@@ -442,14 +446,14 @@ the normalized typed name.
 - On each successful poll, update `latestImport`, the job panel, and the
   summary's last-import row.
 - On `succeeded`:
-  - set the state to `up_to_date`, hide the action buttons, and show
-    `Import complete.`;
-  - silently re-fetch the lookup payload and merge the refreshed counts and
-    state while keeping the completed job panel visible (`options.keepJob`).
+    - set the state to `up_to_date`, hide the action buttons, and show
+      `Import complete.`;
+    - silently re-fetch the lookup payload and merge the refreshed counts and
+      state while keeping the completed job panel visible (`options.keepJob`).
 - On `failed`:
-  - set the state to `out_of_date`, show `Update user`, and show
-    `Import failed. Choose Update user to retry.`;
-  - show `job.error` in the existing job error element.
+    - set the state to `out_of_date`, show `Update user`, and show
+      `Import failed. Choose Update user to retry.`;
+    - show `job.error` in the existing job error element.
 - On timeout, keep the current status and show
   `The import is taking longer than expected. Look up the user again to see its status.`
   Do not show the action buttons while the state is still active.
