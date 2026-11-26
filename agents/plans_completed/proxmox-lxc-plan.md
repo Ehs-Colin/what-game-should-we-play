@@ -1,6 +1,6 @@
 # Proxmox LXC deployment plan
 
-Status: proposed
+Status: implemented (2026-11-25); upstream submission not started
 
 ## Goal
 
@@ -616,17 +616,63 @@ but a dump cannot be downgraded.
 
 ## Implementation checklist
 
-1. Add `.github/workflows/release.yml` with amd64/arm64 build, checksums, and
-   release publication.
-2. Push a `v0.1.0` tag and verify both assets and `sha256sums.txt`.
-3. Add `deploy/proxmox/ct/wgswp.sh` with container defaults, the
-   `COMMUNITY_SCRIPTS_URL` override, and `update_script`/`update_deb_based`.
-4. Add `deploy/proxmox/install/wgswp-install.sh` with the install flow above.
-5. Add `deploy/proxmox/README.md` with the one-liner, prerequisites, first-login
-   steps, update instructions, backup/restore notes, and reverse-proxy note.
-6. Run shellcheck, a fresh install, an update, and a rollback test.
-7. Document any deviations from community-scripts conventions before considering
-   an upstream submission.
+- [x] **Step 1:** Add `.github/workflows/release.yml` with amd64/arm64 build,
+  checksums, and release publication.
+- [x] **Step 2:** Push a `v0.1.0` tag and verify both assets and
+  `sha256sums.txt`.
+- [x] **Step 3:** Add `deploy/proxmox/ct/wgswp.sh` with container defaults, the
+  `COMMUNITY_SCRIPTS_URL` override, and `update_script`/`update_deb_based`.
+- [x] **Step 4:** Add `deploy/proxmox/install/wgswp-install.sh` with the install
+  flow above.
+- [x] **Step 5:** Add `deploy/proxmox/README.md` with the one-liner,
+  prerequisites, first-login steps, update instructions, backup/restore notes,
+  and reverse-proxy note.
+- [x] **Step 6:** Run shellcheck, a fresh install, an update, and a rollback
+  test.
+- [x] **Step 7:** Document any deviations from community-scripts conventions
+  before considering an upstream submission.
+
+### Results
+
+- **Step 6:** shellcheck 0.10.0 and `bash -n` are clean on both scripts, the
+  release asset pattern matches the published `v0.1.1` archives, and the fresh
+  install, update, and rollback runs were completed against a real Proxmox VE
+  host on 2026-11-25. The host and template versions and an arm64 run are not
+  recorded; see the verification record in `deploy/proxmox/README.md`.
+- **Step 7:** every deviation is recorded with its reason and the change needed
+  for an upstream pull request in
+  [`deploy/proxmox/README.md`](../../deploy/proxmox/README.md), under
+  "Differences from community-scripts conventions". The summary below is the
+  short form for this plan.
+
+## Community-scripts deviations
+
+Short form of the README section, in the order an upstream reviewer will ask
+about them:
+
+- **Layout and bootstrap:** the files live under `deploy/proxmox/` instead of a
+  scripts repository's `ct/` and `install/` roots; `COMMUNITY_SCRIPTS_URL` is
+  exported in place of `_CS_DEFAULT_URL`; the header has this repository's
+  copyright with no `Author:` line; `var_testurl` is absent. New scripts go to
+  `community-scripts/DevScripts` first.
+- **Naming and platform:** `APP="WGSWP"` is an abbreviation that keeps `NSAPP`
+  aligned with the existing binary, service, database, log, and credentials
+  names; `var_arm64` defaults to `yes` although arm64 has not been run through
+  install, update, and rollback; PostgreSQL is pinned to 18 from PGDG.
+- **Update behaviour:** the work sits in `update_deb_based` behind
+  `run_os_update` rather than inline in `update_script`, and the update also
+  upgrades OS packages.
+- **Backup and rollback:** `pg_dump` with three-dump retention plus a separate
+  binary-and-web rollback copy, instead of the engine's
+  `create_backup`/`restore_backup` file copy. A file-level copy of a running
+  PostgreSQL data directory is not a consistent snapshot, and forward-only
+  migrations mean the automation restores the binary and leaves the dump to the
+  operator.
+- **Runtime layout:** `/etc/wgswp/wgswp.env`, data in `/var/lib/wgswp` reached
+  through the `/opt/wgswp/data` symlink and preserved with
+  `CLEAN_INSTALL_KEEP="data"`, a dedicated `wgswp` service user,
+  `ProtectSystem=strict`, and a `/health` gate before the installer reports
+  success.
 
 ## Acceptance criteria
 
@@ -659,3 +705,7 @@ container/update slug short and matches the codebase's existing `wgswp` binary,
 log file, and database names. If the Proxmox UI must display "Steam Decision
 Engine" instead, the application name and all derived file names must be
 changed together; they cannot differ.
+
+No design questions remain. Two verification items are still open and are
+tracked in the README's verification record: an arm64 install, update, and
+rollback run, and the Proxmox VE and template versions used for the amd64 run.
