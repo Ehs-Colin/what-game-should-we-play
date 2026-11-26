@@ -10,16 +10,18 @@ import (
 )
 
 type steamUserView struct {
-	SteamID         string    `json:"steamId"`
-	Name            string    `json:"name"`
-	WishlistPrivate bool      `json:"wishlistPrivate"`
-	PersonaName     *string   `json:"personaName"`
-	ProfileURL      *string   `json:"profileUrl"`
-	Avatar          *string   `json:"avatar"`
-	AvatarMedium    *string   `json:"avatarMedium"`
-	AvatarFull      *string   `json:"avatarFull"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	SteamID         string  `json:"steamId"`
+	Name            string  `json:"name"`
+	WishlistPrivate bool    `json:"wishlistPrivate"`
+	PersonaName     *string `json:"personaName"`
+	ProfileURL      *string `json:"profileUrl"`
+	Avatar          *string `json:"avatar"`
+	AvatarMedium    *string `json:"avatarMedium"`
+	AvatarFull      *string `json:"avatarFull"`
+	// Timestamps are optional so a Steam preview that was never stored omits
+	// them.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
 func newSteamUserView(user dbgen.SteamUser) steamUserView {
@@ -32,8 +34,8 @@ func newSteamUserView(user dbgen.SteamUser) steamUserView {
 		Avatar:          nullableString(user.Avatar),
 		AvatarMedium:    nullableString(user.AvatarMedium),
 		AvatarFull:      nullableString(user.AvatarFull),
-		CreatedAt:       user.CreatedAt,
-		UpdatedAt:       user.UpdatedAt,
+		CreatedAt:       &user.CreatedAt,
+		UpdatedAt:       &user.UpdatedAt,
 	}
 }
 

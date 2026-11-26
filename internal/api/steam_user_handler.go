@@ -9,6 +9,8 @@ import (
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbgen"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/httpx"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/importer"
+	"github.com/Ehs-Colin/what-game-should-we-play/internal/steamapi"
 )
 
 const (
@@ -111,6 +113,34 @@ func (handler *Handler) GetSteamUsersByIDs(responseWriter http.ResponseWriter, r
 	})
 }
 
+// Lookup sources. "database" means the stored row matched the typed name;
+// "steam" means the name had to be resolved through Steam, including a
+// renamed vanity that matched a stored Steam ID.
+const (
+	lookupSourceDatabase = "database"
+	lookupSourceSteam    = "steam"
+)
+
+// steamUserLookupResponse is the GET /api/steamusers payload: the profile,
+// the server-computed import state, the job that explains it, and the
+// current owned/wishlist counts. Counts and the timestamps are nil for a
+// Steam preview because the library has not been imported.
+type steamUserLookupResponse struct {
+	SteamUser        steamUserView        `json:"steamUser"`
+	Source           string               `json:"source"`
+	ImportState      importer.ImportState `json:"importState"`
+	LatestImport     *importJobView       `json:"latestImport"`
+	HasActiveJob     bool                 `json:"hasActiveJob"`
+	OwnedAppCount    *int64               `json:"ownedAppCount"`
+	WishlistAppCount *int64               `json:"wishlistAppCount"`
+}
+
+// GetSteamUserByName looks a user up without changing anything. A stored row
+// returns its import state, latest job, and counts. An unknown name is
+// resolved with read-only Steam calls: a renamed vanity reports the stored
+// row's status, otherwise the profile comes back as an unimported preview.
+// Nothing is written and no job is queued on the miss path; a 404 means
+// neither the database nor Steam knows the name.
 func (handler *Handler) GetSteamUserByName(responseWriter http.ResponseWriter, request *http.Request) {
 	name := strings.TrimSpace(request.URL.Query().Get("name"))
 	if name == "" {
@@ -118,19 +148,103 @@ func (handler *Handler) GetSteamUserByName(responseWriter http.ResponseWriter, r
 		return
 	}
 
-	steamUser, err := handler.apiStore.queries.GetSteamUserByName(request.Context(), name)
-	if errors.Is(err, sql.ErrNoRows) {
-		httpx.RespondWithError(responseWriter, http.StatusNotFound, "steam user not found")
+	ctx := request.Context()
+	steamUser, err := handler.apiStore.queries.GetSteamUserByName(ctx, name)
+	if err == nil {
+		handler.respondStoredLookup(responseWriter, request, steamUser, lookupSourceDatabase)
 		return
 	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	// The name is not stored. Resolve it with read-only Steam calls; this
+	// path must not upsert the user or request an import.
+	steamID, player, err := handler.resolveSteamPlayer(ctx, name)
+	if err != nil {
+		if errors.Is(err, errSteamUserNotFound) {
+			httpx.RespondWithError(responseWriter, http.StatusNotFound, "steam user not found")
+			return
+		}
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	// The resolved ID may already be stored under an older name. That row
+	// owns the import history the user should see.
+	stored, err := handler.apiStore.queries.GetSteamUser(ctx, steamID)
+	if err == nil {
+		handler.respondStoredLookup(responseWriter, request, stored, lookupSourceSteam)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, steamUserLookupResponse{
+		SteamUser:   newSteamUserPreviewView(name, steamID, player),
+		Source:      lookupSourceSteam,
+		ImportState: importer.StateNotImported,
+	})
+}
+
+// respondStoredLookup completes a lookup for a stored row with its app
+// counts and importer snapshot.
+func (handler *Handler) respondStoredLookup(responseWriter http.ResponseWriter, request *http.Request, steamUser dbgen.SteamUser, source string) {
+	ctx := request.Context()
+	ownedAppCount, err := handler.apiStore.queries.CountActiveSteamUserApps(ctx, steamUser.SteamID)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	wishlistAppCount, err := handler.apiStore.queries.CountActiveSteamUserWishlist(ctx, steamUser.SteamID)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	snapshot, err := handler.importer.Snapshot(ctx, steamUser.SteamID)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
 		return
 	}
 
-	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{
-		"steamUser": newSteamUserView(steamUser),
-	})
+	response := steamUserLookupResponse{
+		SteamUser:        newSteamUserView(steamUser),
+		Source:           source,
+		ImportState:      snapshot.State,
+		HasActiveJob:     snapshot.HasActiveJob,
+		OwnedAppCount:    &ownedAppCount,
+		WishlistAppCount: &wishlistAppCount,
+	}
+	if snapshot.Latest != nil {
+		view := newImportJobView(*snapshot.Latest)
+		response.LatestImport = &view
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
+}
+
+// newSteamUserPreviewView builds the view for a Steam profile that is not in
+// the database. Timestamps stay nil so the JSON omits them, and empty
+// profile fields become null the way nullString stores them.
+func newSteamUserPreviewView(name string, steamID int64, player steamapi.PlayerSummary) steamUserView {
+	return steamUserView{
+		SteamID:      formatSteamID(steamID),
+		Name:         name,
+		PersonaName:  previewString(player.PersonaName),
+		ProfileURL:   previewString(player.ProfileURL),
+		Avatar:       previewString(player.Avatar),
+		AvatarMedium: previewString(player.AvatarMedium),
+		AvatarFull:   previewString(player.AvatarFull),
+	}
+}
+
+func previewString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 // GetSteamUserView resolves an exact Steam name and returns one page of that

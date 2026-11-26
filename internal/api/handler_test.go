@@ -388,6 +388,7 @@ func TestInsertSteamUserBadRequests(t *testing.T) {
 	}{
 		{"invalid JSON", defaultResolver(), `{`, http.StatusBadRequest},
 		{"missing vanityUrl", defaultResolver(), `{"vanityUrl":"  "}`, http.StatusBadRequest},
+		{"invalid steamId", defaultResolver(), `{"vanityUrl":"someplayer","steamId":"abc"}`, http.StatusBadRequest},
 		{"unknown user", defaultResolver(), `{"vanityUrl":"nobody"}`, http.StatusNotFound},
 		{"steam error", fakeResolver{err: errors.New("boom")}, `{"vanityUrl":"x"}`, http.StatusInternalServerError},
 	}
@@ -653,5 +654,229 @@ func TestGetSteamUserByNameDoesNotCallSteam(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("ResolveVanityURL called %d time(s), want 0", calls)
+	}
+}
+
+// seedLookupCounts gives a user one active owned and one active wishlist app.
+func seedLookupCounts(t *testing.T, env *handlerEnv) {
+	t.Helper()
+	seedApp(t, env, 100, "Owned Game")
+	seedAlias(t, env, 100, 100)
+	seedOwnedApp(t, env, testSteamID, 100, false)
+	seedApp(t, env, 200, "Wishlisted Game")
+	seedAlias(t, env, 200, 200)
+	seedWishlistApp(t, env, testSteamID, 200, false)
+}
+
+func TestLookupDatabaseHitReturnsStateCountsAndJob(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	seedSteamUser(t, env, testSteamID, testVanity)
+	seedLookupCounts(t, env)
+	job := seedImportJob(t, env, testSteamID, importer.StatusSucceeded, time.Now())
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name="+testVanity, "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserLookupResponse](t, recorder)
+
+	if body.Source != lookupSourceDatabase {
+		t.Errorf("source = %q, want %q", body.Source, lookupSourceDatabase)
+	}
+	if body.ImportState != importer.StateUpToDate {
+		t.Errorf("importState = %q, want %q", body.ImportState, importer.StateUpToDate)
+	}
+	if body.HasActiveJob {
+		t.Errorf("hasActiveJob = true, want false")
+	}
+	if body.OwnedAppCount == nil || *body.OwnedAppCount != 1 {
+		t.Errorf("ownedAppCount = %v, want 1", body.OwnedAppCount)
+	}
+	if body.WishlistAppCount == nil || *body.WishlistAppCount != 1 {
+		t.Errorf("wishlistAppCount = %v, want 1", body.WishlistAppCount)
+	}
+	if body.LatestImport == nil || body.LatestImport.ID != job.ID ||
+		body.LatestImport.Status != importer.StatusSucceeded {
+		t.Errorf("latestImport = %+v, want job %d succeeded", body.LatestImport, job.ID)
+	}
+	if body.SteamUser.CreatedAt == nil || body.SteamUser.UpdatedAt == nil {
+		t.Errorf("stored user should carry timestamps: %+v", body.SteamUser)
+	}
+}
+
+func TestLookupDatabaseHitWithActiveJob(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	seedSteamUser(t, env, testSteamID, testVanity)
+	job := seedImportJob(t, env, testSteamID, importer.StatusQueued, time.Now())
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name="+testVanity, "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserLookupResponse](t, recorder)
+
+	if body.ImportState != importer.StateQueued || !body.HasActiveJob {
+		t.Fatalf("state = %q active = %v, want queued and active", body.ImportState, body.HasActiveJob)
+	}
+	if body.LatestImport == nil || body.LatestImport.ID != job.ID {
+		t.Fatalf("latestImport = %+v, want queued job %d", body.LatestImport, job.ID)
+	}
+}
+
+func TestLookupSteamPreviewWritesNothing(t *testing.T) {
+	const previewID = int64(76561198000000009)
+	calls := 0
+	env := newHandlerEnv(t, fakeResolver{
+		ids:   map[string]int64{"previewguy": previewID},
+		calls: &calls,
+	})
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name=previewguy", "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserLookupResponse](t, recorder)
+
+	if body.Source != lookupSourceSteam {
+		t.Errorf("source = %q, want %q", body.Source, lookupSourceSteam)
+	}
+	if body.ImportState != importer.StateNotImported || body.HasActiveJob || body.LatestImport != nil {
+		t.Errorf("state/latest/active = %q/%v/%v, want not_imported with no job",
+			body.ImportState, body.LatestImport, body.HasActiveJob)
+	}
+	if body.OwnedAppCount != nil || body.WishlistAppCount != nil {
+		t.Errorf("preview counts = %v/%v, want null/null", body.OwnedAppCount, body.WishlistAppCount)
+	}
+	user := body.SteamUser
+	if user.SteamID != strconv.FormatInt(previewID, 10) || user.Name != "previewguy" {
+		t.Errorf("preview user = %q/%q, want the resolved ID and typed name", user.SteamID, user.Name)
+	}
+	if user.PersonaName == nil || *user.PersonaName != testPersonaName {
+		t.Errorf("personaName = %v, want %q", user.PersonaName, testPersonaName)
+	}
+	if user.AvatarMedium == nil || *user.AvatarMedium != testAvatarMedium {
+		t.Errorf("avatarMedium = %v, want the Steam preview avatar", user.AvatarMedium)
+	}
+	if user.CreatedAt != nil || user.UpdatedAt != nil {
+		t.Errorf("preview timestamps = %v/%v, want nil", user.CreatedAt, user.UpdatedAt)
+	}
+	// The JSON omits the keys entirely, not just nulls them.
+	var raw struct {
+		SteamUser map[string]json.RawMessage `json:"steamUser"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw response: %v", err)
+	}
+	if _, ok := raw.SteamUser["createdAt"]; ok {
+		t.Errorf("preview JSON includes createdAt")
+	}
+	if _, ok := raw.SteamUser["updatedAt"]; ok {
+		t.Errorf("preview JSON includes updatedAt")
+	}
+
+	if calls != 1 {
+		t.Errorf("ResolveVanityURL called %d time(s), want 1", calls)
+	}
+	var rows int
+	if err := env.db.QueryRow("SELECT count(*) FROM steam_users").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Errorf("preview wrote %d steam_users rows, want 0", rows)
+	}
+	if err := env.db.QueryRow("SELECT count(*) FROM import_jobs").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Errorf("preview queued %d jobs, want 0", rows)
+	}
+}
+
+func TestLookupRenamedVanityReportsStoredRow(t *testing.T) {
+	env := newHandlerEnv(t, fakeResolver{ids: map[string]int64{"newname": testSteamID}})
+	seedSteamUser(t, env, testSteamID, testVanity)
+	seedImportJob(t, env, testSteamID, importer.StatusFailed, time.Now())
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name=newname", "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserLookupResponse](t, recorder)
+
+	if body.Source != lookupSourceSteam {
+		t.Errorf("source = %q, want %q", body.Source, lookupSourceSteam)
+	}
+	if body.SteamUser.Name != testVanity {
+		t.Errorf("name = %q, want the stored name %q", body.SteamUser.Name, testVanity)
+	}
+	if body.ImportState != importer.StateOutOfDate {
+		t.Errorf("importState = %q, want %q", body.ImportState, importer.StateOutOfDate)
+	}
+	if body.LatestImport == nil || body.LatestImport.Status != importer.StatusFailed {
+		t.Errorf("latestImport = %+v, want the failed job", body.LatestImport)
+	}
+	if _, err := env.queries.GetSteamUserByName(context.Background(), "newname"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("lookup wrote or matched a %q row: err = %v", "newname", err)
+	}
+}
+
+func TestInsertSteamUserForceFreshSuccess(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	recorder, first := env.postUser(t)
+	assertCreated(t, recorder, first)
+	env.finishJob(t, first.ImportJob.ID, importer.StatusSucceeded, time.Now())
+
+	// Without force the still-fresh success is reused.
+	recorder, reused := env.postUser(t)
+	if recorder.Code != http.StatusOK || reused.ImportJob.ID != first.ImportJob.ID {
+		t.Fatalf("non-forced status = %d job = %+v, want reuse of job %d",
+			recorder.Code, reused.ImportJob, first.ImportJob.ID)
+	}
+
+	// force: true ignores the shortcut and starts a new job. The matching
+	// steamId must not trip the identity check.
+	recorder = env.do(t, http.MethodPost, "/api/steamuser",
+		fmt.Sprintf(`{"vanityUrl":%q,"steamId":%q,"force":true}`, testVanity, testSteamIDString))
+	forced := decodeJSON[insertSteamUserResponse](t, recorder)
+	assertCreated(t, recorder, forced)
+	if forced.ImportJob.ID == first.ImportJob.ID {
+		t.Fatalf("forced job = %d, want a new job", forced.ImportJob.ID)
+	}
+}
+
+func TestInsertSteamUserForceReusesActiveJob(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	recorder, first := env.postUser(t)
+	assertCreated(t, recorder, first)
+
+	recorder = env.do(t, http.MethodPost, "/api/steamuser",
+		`{"vanityUrl":"`+testVanity+`","force":true}`)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body.String())
+	}
+	forced := decodeJSON[insertSteamUserResponse](t, recorder)
+	if forced.ImportJob.ID != first.ImportJob.ID {
+		t.Fatalf("job = %d, want active job %d reused", forced.ImportJob.ID, first.ImportJob.ID)
+	}
+	if recorder.Header().Get("Location") != "" {
+		t.Errorf("unexpected Location header on a reused job")
+	}
+	if got := env.jobCount(t); got != 1 {
+		t.Fatalf("%d unfinished jobs, want 1", got)
+	}
+}
+
+func TestInsertSteamUserSteamIDMismatchWritesNothing(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+
+	recorder := env.do(t, http.MethodPost, "/api/steamuser",
+		`{"vanityUrl":"`+testVanity+`","steamId":"76561198000009999"}`)
+	requireStatus(t, recorder, http.StatusConflict)
+	if !strings.Contains(recorder.Body.String(), "resolves to a different user") {
+		t.Fatalf("body = %s, want the re-lookup guidance", recorder.Body.String())
+	}
+
+	// The upsert is skipped entirely, and no job is queued.
+	if _, err := env.queries.GetSteamUser(context.Background(), testSteamID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("GetSteamUser error = %v, want sql.ErrNoRows", err)
+	}
+	var rows int
+	if err := env.db.QueryRow("SELECT count(*) FROM import_jobs").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("%d jobs created, want 0", rows)
 	}
 }

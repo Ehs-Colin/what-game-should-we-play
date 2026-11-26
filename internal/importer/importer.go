@@ -28,6 +28,28 @@ const (
 	queueSize           = 100
 )
 
+// ImportState is the server-side import status of a Steam user, computed from
+// their job history and the refresh interval.
+type ImportState string
+
+const (
+	StateNotImported ImportState = "not_imported"
+	StateQueued      ImportState = "queued"
+	StateRunning     ImportState = "running"
+	StateUpToDate    ImportState = "up_to_date"
+	StateOutOfDate   ImportState = "out_of_date"
+)
+
+// ImportSnapshot is a user's import state plus the job that explains it.
+// Latest is the active job for the queued and running states, otherwise the
+// latest finished job, and nil when the user has no jobs. HasActiveJob
+// mirrors whether Latest is still in flight.
+type ImportSnapshot struct {
+	State        ImportState
+	Latest       *dbgen.ImportJob
+	HasActiveJob bool
+}
+
 // SteamClient is the subset of *steamapi.Client the importer uses.
 type SteamClient interface {
 	GetOwnedGames(ctx context.Context, steamID int64) (*steamapi.OwnedGamesResponse, error)
@@ -49,7 +71,7 @@ type Importer struct {
 	jobs            chan int64
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
-	// requestMu makes RequestImport's check-then-create atomic, so two
+	// requestMu makes requestImport's check-then-create atomic, so two
 	// simultaneous requests for one user don't both create a job.
 	requestMu sync.Mutex
 }
@@ -90,6 +112,18 @@ func (importer *Importer) Start(ctx context.Context) error {
 // if it finished within the refresh interval. Otherwise it creates and
 // enqueues a new job, and created is true.
 func (importer *Importer) RequestImport(ctx context.Context, steamID int64) (job dbgen.ImportJob, created bool, err error) {
+	return importer.requestImport(ctx, steamID, false)
+}
+
+// RequestForcedImport is RequestImport without the fresh-success shortcut: it
+// creates a new job whenever none is active. An active job is still reused.
+func (importer *Importer) RequestForcedImport(ctx context.Context, steamID int64) (job dbgen.ImportJob, created bool, err error) {
+	return importer.requestImport(ctx, steamID, true)
+}
+
+// requestImport is the shared check-then-create path. force skips the
+// refresh-interval shortcut so a stale-but-successful import starts anew.
+func (importer *Importer) requestImport(ctx context.Context, steamID int64, force bool) (job dbgen.ImportJob, created bool, err error) {
 	importer.requestMu.Lock()
 	defer importer.requestMu.Unlock()
 
@@ -101,12 +135,14 @@ func (importer *Importer) RequestImport(ctx context.Context, steamID int64) (job
 		return dbgen.ImportJob{}, false, fmt.Errorf("get active import job: %w", err)
 	}
 
-	job, err = importer.queries.GetLatestSucceededImportJobForUser(ctx, steamID)
-	if err == nil && job.FinishedAt.Valid && importer.now().Sub(job.FinishedAt.Time) < importer.refreshInterval {
-		return job, false, nil
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return dbgen.ImportJob{}, false, fmt.Errorf("get latest succeeded import job: %w", err)
+	if !force {
+		job, err = importer.queries.GetLatestSucceededImportJobForUser(ctx, steamID)
+		if err == nil && job.FinishedAt.Valid && importer.now().Sub(job.FinishedAt.Time) < importer.refreshInterval {
+			return job, false, nil
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return dbgen.ImportJob{}, false, fmt.Errorf("get latest succeeded import job: %w", err)
+		}
 	}
 
 	job, err = importer.queries.CreateImportJob(ctx, dbgen.CreateImportJobParams{
@@ -118,6 +154,48 @@ func (importer *Importer) RequestImport(ctx context.Context, steamID int64) (job
 	}
 	importer.Enqueue(job.ID)
 	return job, true, nil
+}
+
+// Snapshot reports the user's import state from their job history without
+// creating or enqueuing anything. A failed latest attempt outranks an earlier
+// success, and a succeeded job is up to date only while it finished inside
+// the refresh interval.
+func (importer *Importer) Snapshot(ctx context.Context, steamID int64) (ImportSnapshot, error) {
+	job, err := importer.queries.GetActiveImportJobForUser(ctx, steamID)
+	if err == nil {
+		return activeSnapshot(job), nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return ImportSnapshot{}, fmt.Errorf("get active import job: %w", err)
+	}
+
+	job, err = importer.queries.GetLatestImportJobForUser(ctx, steamID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ImportSnapshot{State: StateNotImported}, nil
+	}
+	if err != nil {
+		return ImportSnapshot{}, fmt.Errorf("get latest import job: %w", err)
+	}
+
+	// A queued or running job that raced past the active query stays active.
+	if job.Status == StatusQueued || job.Status == StatusRunning {
+		return activeSnapshot(job), nil
+	}
+	if job.Status == StatusSucceeded && job.FinishedAt.Valid &&
+		importer.now().Sub(job.FinishedAt.Time) < importer.refreshInterval {
+		return ImportSnapshot{State: StateUpToDate, Latest: &job}, nil
+	}
+	return ImportSnapshot{State: StateOutOfDate, Latest: &job}, nil
+}
+
+// activeSnapshot describes an in-flight job. The active query only returns
+// queued or running rows, so any other status is reported as queued.
+func activeSnapshot(job dbgen.ImportJob) ImportSnapshot {
+	state := StateQueued
+	if job.Status == StatusRunning {
+		state = StateRunning
+	}
+	return ImportSnapshot{State: state, Latest: &job, HasActiveJob: true}
 }
 
 // Enqueue never blocks. If the queue is full the job stays queued in the

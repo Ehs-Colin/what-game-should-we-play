@@ -235,12 +235,34 @@
                         hidden
                         aria-labelledby="result-title"
                     >
-                        <h2 id="result-title" class="section-title">
-                            Steam user
-                        </h2>
+                        <div class="section-heading">
+                            <h2 id="result-title" class="section-title">
+                                Steam user
+                            </h2>
+                            <span
+                                id="result-status-badge"
+                                class="badge"
+                                data-status="none"
+                            ></span>
+                        </div>
                         <dl class="details">
+                            <div
+                                class="details__row details__row--avatar"
+                                id="result-avatar-row"
+                                hidden
+                            >
+                                <dt class="visually-hidden">Avatar</dt>
+                                <dd>
+                                    <img
+                                        id="result-avatar"
+                                        class="user-summary__avatar"
+                                        alt=""
+                                        loading="lazy"
+                                    />
+                                </dd>
+                            </div>
                             <div class="details__row">
-                                <dt>Name</dt>
+                                <dt>Steam name</dt>
                                 <dd id="result-name"></dd>
                             </div>
                             <div class="details__row">
@@ -248,10 +270,43 @@
                                 <dd><output id="steam-id"></output></dd>
                             </div>
                             <div class="details__row">
+                                <dt>Persona name</dt>
+                                <dd id="result-persona"></dd>
+                            </div>
+                            <div class="details__row">
                                 <dt>Source</dt>
                                 <dd id="result-source"></dd>
                             </div>
+                            <div class="details__row">
+                                <dt>Owned apps</dt>
+                                <dd id="result-owned"></dd>
+                            </div>
+                            <div class="details__row">
+                                <dt>Wishlist apps</dt>
+                                <dd id="result-wishlist"></dd>
+                            </div>
+                            <div class="details__row">
+                                <dt>Last import</dt>
+                                <dd id="result-last-import"></dd>
+                            </div>
                         </dl>
+                        <p id="result-import-error" class="error" hidden></p>
+                        <div
+                            id="result-actions"
+                            class="panel__actions"
+                            hidden
+                        >
+                            <button id="import-button" type="button">
+                                Import User
+                            </button>
+                            <button
+                                id="update-button"
+                                type="button"
+                                hidden
+                            >
+                                Update user
+                            </button>
+                        </div>
                     </section>
 
                     <section

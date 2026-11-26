@@ -78,6 +78,17 @@ const result = document.querySelector("#result");
 const resultName = document.querySelector("#result-name");
 const steamID = document.querySelector("#steam-id");
 const resultSource = document.querySelector("#result-source");
+const resultStatusBadge = document.querySelector("#result-status-badge");
+const resultAvatarRow = document.querySelector("#result-avatar-row");
+const resultAvatar = document.querySelector("#result-avatar");
+const resultPersona = document.querySelector("#result-persona");
+const resultOwned = document.querySelector("#result-owned");
+const resultWishlist = document.querySelector("#result-wishlist");
+const resultLastImport = document.querySelector("#result-last-import");
+const resultImportError = document.querySelector("#result-import-error");
+const resultActions = document.querySelector("#result-actions");
+const importButton = document.querySelector("#import-button");
+const updateButton = document.querySelector("#update-button");
 
 const jobSection = document.querySelector("#job");
 const jobStatus = document.querySelector("#job-status");
@@ -276,6 +287,10 @@ let pollTimer = null;
 let pollController = null;
 let lastJob = null;
 let pollDeadline = 0;
+// The last lookup payload plus the normalized name that produced it. Import
+// and Update send both so the server can reject a stale preview with a 409.
+let currentLookup = null;
+let currentLookupName = "";
 
 let dashboardTimer = null;
 let dashboardController = null;
@@ -366,6 +381,9 @@ form.addEventListener("submit", (event) => {
     event.preventDefault();
     void search();
 });
+
+importButton.addEventListener("click", () => void startImport(false));
+updateButton.addEventListener("click", () => void startImport(true));
 
 searchSort.addEventListener("change", () => {
     searchDirection.value =
@@ -603,6 +621,9 @@ commonGamesSelectedPanel.addEventListener("click", (event) => {
     }
 });
 
+// search performs the read-only lookup. A 200 renders the state the server
+// computed; a 404 means neither the database nor Steam knows the name. A
+// lookup never posts, so it can never write a row or queue a job.
 async function search() {
     const token = ++importToken;
     lookupController?.abort();
@@ -625,7 +646,7 @@ async function search() {
     setStatus(`Looking up “${name}”…`);
 
     try {
-        const lookupResponse = await apiFetch(lookupURL(name), {
+        const response = await apiFetch(lookupURL(name), {
             headers: { Accept: "application/json" },
             signal: controller.signal,
         });
@@ -633,55 +654,25 @@ async function search() {
             return;
         }
 
-        if (lookupResponse.status === 200) {
-            const body = await lookupResponse.json();
+        if (response.status === 200) {
+            const body = await response.json();
             if (!isCurrent(token)) {
                 return;
             }
-            showSteamUser(body.steamUser, "database");
-            setStatus("Found in the database. No import needed.");
+            currentLookupName = name;
+            applyLookup(body, token);
             return;
         }
 
-        if (lookupResponse.status !== 404) {
-            throw await readError(lookupResponse);
-        }
-
-        setStatus(`Not in the database. Resolving “${name}” with Steam…`);
-
-        const createResponse = await apiFetch("/api/steamuser", {
-            method: "POST",
-            headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ vanityUrl: name }),
-            signal: controller.signal,
-        });
-        if (!isCurrent(token)) {
+        if (response.status === 404) {
+            setStatus(
+                "Steam user not found. Check the name and try again.",
+                "error",
+            );
             return;
         }
 
-        if (createResponse.status === 404) {
-            throw new Error("Steam user not found.");
-        }
-        if (!createResponse.ok) {
-            throw await readError(createResponse);
-        }
-
-        const body = await createResponse.json();
-        if (!isCurrent(token)) {
-            return;
-        }
-
-        showSteamUser(body.steamUser, "steam");
-        setStatus("User saved. Import started.");
-
-        if (body.importJob) {
-            startPolling(body.importJob, token);
-        } else {
-            setStatus("User saved. No import job was returned.", "error");
-        }
+        throw await readError(response);
     } catch (error) {
         if (isAbort(error) || !isCurrent(token)) {
             return;
@@ -711,7 +702,7 @@ async function pollOnce(token) {
     }
     if (Date.now() > pollDeadline) {
         setStatus(
-            "The import is taking longer than expected. You can check back later.",
+            "The import is taking longer than expected. Look up the user again to see its status.",
             "error",
         );
         return;
@@ -743,6 +734,9 @@ async function pollOnce(token) {
                 currentJob.status === "failed"
             ) {
                 shouldContinue = false;
+                handleJobTerminal(currentJob, token);
+            } else {
+                updateLatestImport(currentJob);
             }
         } else if (response.status === 404) {
             jobStatus.textContent = "Import job not found.";
@@ -837,33 +831,371 @@ function jobStatusMessage(job) {
     }
 }
 
-function showSteamUser(steamUser, source) {
-    if (!steamUser) {
-        setStatus("The server did not return a Steam user.", "error");
-        return;
-    }
+// UI copy per import state from GET /api/steamusers. The tones reuse the
+// shared .badge styles.
+const IMPORT_STATE_META = {
+    not_imported: { label: "Not imported", tone: "none" },
+    queued: { label: "Queued", tone: "queued" },
+    running: { label: "Importing", tone: "running" },
+    up_to_date: { label: "Up to date", tone: "succeeded" },
+    out_of_date: { label: "Out of date", tone: "out-of-date" },
+};
 
-    resultName.textContent = steamUser.name ?? "";
+// applyLookup renders a lookup payload: the summary, the badge, the action
+// buttons, and polling for an in-flight job. options.keepJob leaves a visible
+// completed job panel alone; options.status overrides the state message.
+function applyLookup(body, token, options = {}) {
+    currentLookup = body;
+    renderResultSummary(body);
+    applyImportState(body, token, options);
+}
+
+function renderResultSummary(body) {
+    const user = body.steamUser ?? {};
+    const latest = body.latestImport ?? null;
+
+    resultName.textContent = user.name ?? "";
     // Steam IDs exceed JavaScript's safe integer range, so keep the value as
     // text and never convert it to a number.
     steamID.textContent =
-        steamUser.steamId === null || steamUser.steamId === undefined
+        user.steamId === null || user.steamId === undefined
             ? ""
-            : String(steamUser.steamId);
+            : String(user.steamId);
+    resultPersona.textContent = user.personaName || "—";
     resultSource.textContent =
-        source === "database"
+        body.source === "database"
             ? "Stored in the database"
             : "Resolved with Steam";
+    resultOwned.textContent =
+        body.ownedAppCount === null || body.ownedAppCount === undefined
+            ? "—"
+            : formatCount(body.ownedAppCount);
+    resultWishlist.textContent =
+        body.wishlistAppCount === null || body.wishlistAppCount === undefined
+            ? "—"
+            : formatCount(body.wishlistAppCount);
+    resultLastImport.textContent = lastImportText(latest);
+
+    // Users without profile data have no avatar, matching View User.
+    const avatar = user.avatarMedium || user.avatarFull || user.avatar;
+    if (avatar) {
+        resultAvatar.src = avatar;
+        resultAvatarRow.hidden = false;
+    } else {
+        resultAvatar.removeAttribute("src");
+        resultAvatarRow.hidden = true;
+    }
+
+    if (latest?.error) {
+        resultImportError.textContent = latest.error;
+        resultImportError.hidden = false;
+    } else {
+        resultImportError.textContent = "";
+        resultImportError.hidden = true;
+    }
+
+    const meta = IMPORT_STATE_META[body.importState] ?? {
+        label: String(body.importState ?? "Unknown"),
+        tone: "unknown",
+    };
+    resultStatusBadge.textContent = meta.label;
+    resultStatusBadge.dataset.status = meta.tone;
+
     result.hidden = false;
 }
 
+// applyImportState shows exactly the action the server state allows: an
+// active job polls with both buttons hidden, a never-imported user offers
+// Import, and a stale or failed one offers Update.
+function applyImportState(body, token, options = {}) {
+    const state = body.importState;
+    const latest = body.latestImport ?? null;
+
+    const showImport = state === "not_imported";
+    const showUpdate = state === "out_of_date";
+    importButton.hidden = !showImport;
+    updateButton.hidden = !showUpdate;
+    resultActions.hidden = !showImport && !showUpdate;
+
+    if ((state === "queued" || state === "running") && latest) {
+        startPolling(latest, token);
+    } else if (!options.keepJob) {
+        jobSection.hidden = true;
+    }
+
+    if (options.status !== undefined) {
+        setStatus(options.status, options.statusState);
+    } else {
+        setStatus(stateMessage(state, latest));
+    }
+}
+
+function stateMessage(state, latest) {
+    switch (state) {
+        case "not_imported":
+            return "Not in the database yet. Check the Steam profile, then choose Import User.";
+        case "queued":
+            return "Import queued.";
+        case "running":
+            return "Import in progress…";
+        case "up_to_date":
+            return "Up to date.";
+        case "out_of_date":
+            return latest?.status === "failed"
+                ? "The last import failed. Choose Update user to try again."
+                : "The last successful import is out of date. Choose Update user to refresh it.";
+        default:
+            return "";
+    }
+}
+
+// startImport posts the name and Steam ID from the last lookup. force is the
+// Update user path: the server always starts a fresh job unless one is
+// already active. A 409 means the name no longer matches the previewed ID.
+async function startImport(force) {
+    if (!currentLookup?.steamUser) {
+        return;
+    }
+
+    const token = ++importToken;
+    lookupController?.abort();
+    stopPolling();
+    lastJob = null;
+
+    const controller = new AbortController();
+    lookupController = controller;
+
+    const request = {
+        vanityUrl: currentLookupName,
+        steamId: String(currentLookup.steamUser.steamId ?? ""),
+        force,
+    };
+
+    setBusy(true);
+    setActionsBusy(true);
+    setStatus(force ? "Starting update…" : "Starting import…");
+
+    try {
+        const response = await apiFetch("/api/steamuser", {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(request),
+            signal: controller.signal,
+        });
+        if (!isCurrent(token)) {
+            return;
+        }
+
+        if (response.status === 404 || response.status === 409) {
+            const error = await readError(response);
+            setStatus(error.message, "error");
+            return;
+        }
+        if (!response.ok) {
+            throw await readError(response);
+        }
+
+        const body = await response.json();
+        if (!isCurrent(token)) {
+            return;
+        }
+
+        const job = body.importJob ?? null;
+        const payload = {
+            ...currentLookup,
+            steamUser: body.steamUser ?? currentLookup.steamUser,
+            source: "database",
+            latestImport: job,
+            hasActiveJob: isJobActive(job),
+        };
+        const state = stateFromJob(job);
+        if (state) {
+            payload.importState = state;
+        }
+        // An active state starts polling from applyImportState; only a
+        // terminal job needs the completion handler directly.
+        applyLookup(payload, token, { keepJob: true });
+        if (job && isJobTerminal(job)) {
+            handleJobTerminal(job, token);
+        }
+    } catch (error) {
+        if (isAbort(error) || !isCurrent(token)) {
+            return;
+        }
+        setStatus(errorMessage(error), "error");
+    } finally {
+        if (isCurrent(token)) {
+            setBusy(false);
+            setActionsBusy(false);
+            lookupController = null;
+        }
+    }
+}
+
+// handleJobTerminal folds a finished job into the rendered state. A success
+// keeps the completed job panel visible and re-reads the lookup for fresh
+// counts; a failure offers Update user for a retry.
+function handleJobTerminal(job, token) {
+    if (!currentLookup) {
+        return;
+    }
+    const succeeded = job.status === "succeeded";
+    const payload = {
+        ...currentLookup,
+        latestImport: job,
+        hasActiveJob: false,
+        importState: succeeded ? "up_to_date" : "out_of_date",
+    };
+    if (succeeded) {
+        applyLookup(payload, token, {
+            keepJob: true,
+            status: "Import complete.",
+        });
+        void refreshCounts(token);
+    } else {
+        applyLookup(payload, token, {
+            keepJob: true,
+            status: "Import failed. Choose Update user to retry.",
+            statusState: "error",
+        });
+    }
+}
+
+// refreshCounts silently re-reads the lookup after a successful import so
+// the owned and wishlist counts come from the database, keeping the
+// completed job panel on screen.
+async function refreshCounts(token) {
+    if (!currentLookupName) {
+        return;
+    }
+
+    const controller = new AbortController();
+    try {
+        const response = await apiFetch(lookupURL(currentLookupName), {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+        });
+        if (!isCurrent(token) || !onImportRoute()) {
+            return;
+        }
+        if (response.status !== 200) {
+            return;
+        }
+        const body = await response.json();
+        if (!isCurrent(token)) {
+            return;
+        }
+        applyLookup(body, token, {
+            keepJob: true,
+            status: "Import complete.",
+        });
+    } catch {
+        // The pre-import counts stay; the next lookup refreshes them.
+    }
+}
+
+// updateLatestImport keeps the lookup payload and the summary's last-import
+// row in step with an active job while polling.
+function updateLatestImport(job) {
+    if (!currentLookup) {
+        return;
+    }
+    currentLookup = {
+        ...currentLookup,
+        latestImport: job,
+        hasActiveJob: isJobActive(job),
+    };
+    resultLastImport.textContent = lastImportText(job);
+}
+
+// stateFromJob maps a job status to the import state it implies right now.
+function stateFromJob(job) {
+    switch (job?.status) {
+        case "queued":
+            return "queued";
+        case "running":
+            return "running";
+        case "succeeded":
+            return "up_to_date";
+        case "failed":
+            return "out_of_date";
+        default:
+            return null;
+    }
+}
+
+function isJobActive(job) {
+    return Boolean(
+        job && (job.status === "queued" || job.status === "running"),
+    );
+}
+
+function isJobTerminal(job) {
+    return Boolean(
+        job && (job.status === "succeeded" || job.status === "failed"),
+    );
+}
+
+function lastImportText(job) {
+    if (!job) {
+        return "—";
+    }
+    const labels = {
+        queued: "Queued",
+        running: "Started",
+        succeeded: "Succeeded",
+        failed: "Failed",
+    };
+    const label = labels[job.status] ?? String(job.status ?? "Unknown");
+    const when = job.finishedAt || job.startedAt || job.createdAt;
+    return when ? `${label} ${formatDateTime(when)}` : label;
+}
+
+const importDateFormatter = new Intl.DateTimeFormat([], {
+    dateStyle: "medium",
+    timeStyle: "short",
+});
+
+function formatDateTime(value) {
+    if (!value) {
+        return "";
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+        ? String(value)
+        : importDateFormatter.format(date);
+}
+
 function resetView() {
+    currentLookup = null;
+    currentLookupName = "";
+
     result.hidden = true;
     jobSection.hidden = true;
 
+    resultStatusBadge.textContent = "";
+    resultStatusBadge.dataset.status = "none";
     resultName.textContent = "";
     steamID.textContent = "";
+    resultPersona.textContent = "";
     resultSource.textContent = "";
+    resultOwned.textContent = "";
+    resultWishlist.textContent = "";
+    resultLastImport.textContent = "";
+
+    resultAvatar.removeAttribute("src");
+    resultAvatarRow.hidden = true;
+
+    resultImportError.textContent = "";
+    resultImportError.hidden = true;
+
+    importButton.hidden = true;
+    updateButton.hidden = true;
+    resultActions.hidden = true;
+    setActionsBusy(false);
 
     jobStatus.textContent = "";
     jobProgress.textContent = "";
@@ -888,6 +1220,11 @@ function setBusy(busy) {
     lookupBusy = busy;
     input.disabled = busy;
     button.disabled = busy;
+}
+
+function setActionsBusy(busy) {
+    importButton.disabled = busy;
+    updateButton.disabled = busy;
 }
 
 function normalizeName(rawValue) {

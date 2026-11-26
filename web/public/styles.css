@@ -360,6 +360,13 @@ select:disabled {
     margin: 0;
 }
 
+.panel__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 1rem;
+}
+
 .user-group-add {
     margin-top: 1.25rem;
     padding-top: 1rem;
@@ -688,15 +695,6 @@ select:disabled {
     border-color: var(--border);
     background: var(--accent-soft);
     color: var(--muted);
-}
-
-.badge[data-status="queued"],
-.badge[data-status="running"],
-.badge[data-status="succeeded"],
-.badge[data-status="failed"],
-.badge[data-status="none"],
-.badge[data-status="unknown"] {
-    text-transform: capitalize;
 }
 
 .tabs {
