@@ -254,12 +254,24 @@ func (handler *Handler) GetGroupView(responseWriter http.ResponseWriter, request
 		return
 	}
 
+	memberIDs := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		memberIDs = append(memberIDs, row.SteamID)
+	}
+	groupsBySteamID, err := handler.groupsBySteamID(ctx, memberIDs)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
 	response := groupViewResponse{
 		Group:   newGroupView(group, counts),
 		Members: make([]steamUserSummaryView, 0, len(rows)),
 	}
 	for _, row := range rows {
-		response.Members = append(response.Members, newSteamUserSummaryView(dbgen.SearchSteamUsersRow(row)))
+		member := newSteamUserSummaryView(dbgen.SearchSteamUsersRow(row))
+		member.Groups = groupsBySteamID[row.SteamID]
+		response.Members = append(response.Members, member)
 	}
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
 }

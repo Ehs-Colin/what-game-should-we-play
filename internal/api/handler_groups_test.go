@@ -431,6 +431,30 @@ func TestAddGroupMemberMatchesSearchUsers(t *testing.T) {
 		t.Fatalf("decode members: %v", err)
 	}
 	assertJSONString(t, members[0]["steamId"], "76561198000000201")
+
+	// Group references include every group a member joins, not just the
+	// viewed one, and the row keeps matching the Search Users payload.
+	family := seedGroup(t, env, "Family", groupAlice)
+	recorder = getGroupView(t, env, "Friends")
+	requireStatus(t, recorder, http.StatusOK)
+	view = decodeJSON[groupViewResponse](t, recorder)
+
+	search = env.do(t, http.MethodGet, "/api/steamusers/search?name=Alice", "")
+	requireStatus(t, search, http.StatusOK)
+	searchUsers = decodeJSON[searchSteamUsersResponse](t, search).SteamUsers
+	if len(view.Members) != 1 || len(searchUsers) != 1 {
+		t.Fatalf("members = %d, search users = %d, want 1 each", len(view.Members), len(searchUsers))
+	}
+	wantGroups := []groupRefView{
+		{GroupID: family.ID, Name: "Family"},
+		{GroupID: friends.ID, Name: "Friends"},
+	}
+	if !reflect.DeepEqual(view.Members[0].Groups, wantGroups) {
+		t.Errorf("member groups = %+v, want %+v (alphabetical)", view.Members[0].Groups, wantGroups)
+	}
+	if !reflect.DeepEqual(view.Members[0], searchUsers[0]) {
+		t.Errorf("member = %+v\nwant the Search Users row %+v", view.Members[0], searchUsers[0])
+	}
 }
 
 func TestAddGroupMemberIsIdempotent(t *testing.T) {
