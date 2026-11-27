@@ -165,6 +165,7 @@ SELECT
     su.avatar_full,
     su.created_at,
     su.updated_at,
+    su.custom_username,
     (
         SELECT COUNT(DISTINCT aa.app_id)
         FROM steam_user_apps sua

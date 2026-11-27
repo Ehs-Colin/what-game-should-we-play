@@ -217,8 +217,26 @@
                                 Look up
                             </button>
                         </div>
+                        <div id="custom-username-row" hidden>
+                            <label for="custom-username"
+                                >Custom username (optional)</label
+                            >
+                            <div class="lookup__row">
+                                <input
+                                    id="custom-username"
+                                    name="customUsername"
+                                    type="text"
+                                    placeholder="e.g. RaidBuddy"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    maxlength="255"
+                                />
+                            </div>
+                        </div>
                         <p class="hint">
-                            Enter the part after steamcommunity.com/id/
+                            Enter the part after steamcommunity.com/id/, or a
+                            SteamID64 or steamcommunity.com/profiles/ link for
+                            users without a custom URL.
                         </p>
                     </form>
 

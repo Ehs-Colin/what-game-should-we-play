@@ -200,6 +200,7 @@ SELECT
     su.avatar_full,
     su.created_at,
     su.updated_at,
+    su.custom_username,
     (
         SELECT COUNT(DISTINCT aa.app_id)
         FROM steam_user_apps sua
@@ -252,6 +253,7 @@ type ListGroupMembersRow struct {
 	AvatarFull             sql.NullString `json:"avatar_full"`
 	CreatedAt              time.Time      `json:"created_at"`
 	UpdatedAt              time.Time      `json:"updated_at"`
+	CustomUsername         bool           `json:"custom_username"`
 	OwnedAppCount          int64          `json:"owned_app_count"`
 	WishlistAppCount       int64          `json:"wishlist_app_count"`
 	LatestImportStatus     sql.NullString `json:"latest_import_status"`
@@ -282,6 +284,7 @@ func (q *Queries) ListGroupMembers(ctx context.Context, groupID int64) ([]ListGr
 			&i.AvatarFull,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CustomUsername,
 			&i.OwnedAppCount,
 			&i.WishlistAppCount,
 			&i.LatestImportStatus,

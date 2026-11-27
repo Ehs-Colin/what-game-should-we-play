@@ -32,13 +32,25 @@ func (handler *Handler) resolveSteamPlayer(ctx context.Context, vanityURL string
 		return 0, steamapi.PlayerSummary{}, fmt.Errorf("parse resolved steam id %q: %w", resolved.Response.SteamID, err)
 	}
 
-	summaries, err := handler.apiStore.steamClient.GetPlayerSummaries(ctx, []string{resolved.Response.SteamID})
+	player, err := handler.fetchSteamPlayerByID(ctx, steamID)
 	if err != nil {
-		return 0, steamapi.PlayerSummary{}, fmt.Errorf("get player summaries: %w", err)
+		return 0, steamapi.PlayerSummary{}, err
+	}
+	return steamID, player, nil
+}
+
+// fetchSteamPlayerByID loads a profile directly by Steam ID with a read-only
+// GetPlayerSummaries call, skipping vanity resolution for users without a
+// custom URL. An empty player list is errSteamUserNotFound; the profile is
+// validated before any import writes anything.
+func (handler *Handler) fetchSteamPlayerByID(ctx context.Context, steamID int64) (steamapi.PlayerSummary, error) {
+	summaries, err := handler.apiStore.steamClient.GetPlayerSummaries(ctx, []string{formatSteamID(steamID)})
+	if err != nil {
+		return steamapi.PlayerSummary{}, fmt.Errorf("get player summaries: %w", err)
 	}
 	// Steam returns an empty players list when the ID has no profile.
 	if len(summaries.Response.Players) == 0 {
-		return 0, steamapi.PlayerSummary{}, fmt.Errorf("%w: %q", errSteamUserNotFound, vanityURL)
+		return steamapi.PlayerSummary{}, fmt.Errorf("%w: %d", errSteamUserNotFound, steamID)
 	}
-	return steamID, summaries.Response.Players[0], nil
+	return summaries.Response.Players[0], nil
 }

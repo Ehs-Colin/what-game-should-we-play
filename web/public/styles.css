@@ -893,6 +893,13 @@ select:disabled {
     font-weight: 700;
 }
 
+.app-cell__name-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
+}
+
 /* Search Users names link to View User but read as row titles, not links. */
 a.app-cell__name {
     color: var(--text);

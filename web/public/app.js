@@ -4,8 +4,10 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const DASHBOARD_REFRESH_MS = 5000;
 const PROFILE_PREFIX = "https://steamcommunity.com/id/";
+const PROFILE_ID_PREFIX = "https://steamcommunity.com/profiles/";
 
 const MAX_COMMON_GAME_USERS = 25;
+const MAX_CUSTOM_USERNAME_LENGTH = 255; // mirrors the server's name limit
 const COMMON_GAMES_LIMIT_MIN = 1;
 const COMMON_GAMES_LIMIT_MAX = 100;
 const COMMON_GAMES_LIMIT_DEFAULT = 10;
@@ -78,6 +80,8 @@ const result = document.querySelector("#result");
 const resultName = document.querySelector("#result-name");
 const steamID = document.querySelector("#steam-id");
 const resultSource = document.querySelector("#result-source");
+const customUsernameRow = document.querySelector("#custom-username-row");
+const customUsernameInput = document.querySelector("#custom-username");
 const resultStatusBadge = document.querySelector("#result-status-badge");
 const resultAvatarRow = document.querySelector("#result-avatar-row");
 const resultAvatar = document.querySelector("#result-avatar");
@@ -127,9 +131,7 @@ const searchGroupsReset = document.querySelector("#search-groups-reset");
 const searchGroupsStatus = document.querySelector("#search-groups-status");
 const searchGroupsToolbar = document.querySelector("#search-groups-toolbar");
 const searchGroupsCount = document.querySelector("#search-groups-count");
-const searchGroupsPageSize = document.querySelector(
-    "#search-groups-page-size",
-);
+const searchGroupsPageSize = document.querySelector("#search-groups-page-size");
 const searchGroupsResultsPanel = document.querySelector(
     "#search-groups-results-panel",
 );
@@ -291,6 +293,9 @@ let pollDeadline = 0;
 // and Update send both so the server can reject a stale preview with a 409.
 let currentLookup = null;
 let currentLookupName = "";
+// "id" when the lookup input was a SteamID64; "vanity" otherwise. Import
+// requests built in ID mode skip vanityUrl entirely.
+let currentLookupMode = "vanity";
 
 let dashboardTimer = null;
 let dashboardController = null;
@@ -384,6 +389,16 @@ form.addEventListener("submit", (event) => {
 
 importButton.addEventListener("click", () => void startImport(false));
 updateButton.addEventListener("click", () => void startImport(true));
+
+// The custom-username field belongs to the ID path only: show it while the
+// current input reads as a SteamID64 and clear it on every switch back.
+input.addEventListener("input", () => {
+    const isSteamID = detectSteamID(normalizeName(input.value));
+    customUsernameRow.hidden = !isSteamID;
+    if (!isSteamID) {
+        customUsernameInput.value = "";
+    }
+});
 
 searchSort.addEventListener("change", () => {
     searchDirection.value =
@@ -642,6 +657,11 @@ async function search() {
         return;
     }
 
+    // Remember how this lookup was entered so Import/Update build the right
+    // request body; keep the label field in step with the detected mode.
+    currentLookupMode = detectSteamID(name) ? "id" : "vanity";
+    customUsernameRow.hidden = currentLookupMode !== "id";
+
     setBusy(true);
     setStatus(`Looking up “${name}”…`);
 
@@ -661,6 +681,7 @@ async function search() {
             }
             currentLookupName = name;
             applyLookup(body, token);
+            prefillCustomUsername(body);
             return;
         }
 
@@ -862,10 +883,13 @@ function renderResultSummary(body) {
             ? ""
             : String(user.steamId);
     resultPersona.textContent = user.personaName || "—";
-    resultSource.textContent =
-        body.source === "database"
-            ? "Stored in the database"
-            : "Resolved with Steam";
+    if (body.source === "database") {
+        resultSource.textContent = user.customUsername
+            ? "Stored in the database (custom username)"
+            : "Stored in the database";
+    } else {
+        resultSource.textContent = "Resolved with Steam";
+    }
     resultOwned.textContent =
         body.ownedAppCount === null || body.ownedAppCount === undefined
             ? "—"
@@ -965,11 +989,22 @@ async function startImport(force) {
     const controller = new AbortController();
     lookupController = controller;
 
-    const request = {
-        vanityUrl: currentLookupName,
-        steamId: String(currentLookup.steamUser.steamId ?? ""),
-        force,
-    };
+    // ID mode imports skip vanity resolution entirely: the previewed (or
+    // entered) Steam ID is the identifier and the optional label rides
+    // along. Vanity mode keeps today's body.
+    const steamIDValue = String(currentLookup.steamUser.steamId ?? "");
+    const request =
+        currentLookupMode === "id"
+            ? {
+                  steamId: steamIDValue,
+                  customUsername: customUsernameInput.value.trim(),
+                  force,
+              }
+            : {
+                  vanityUrl: currentLookupName,
+                  steamId: steamIDValue,
+                  force,
+              };
 
     setBusy(true);
     setActionsBusy(true);
@@ -992,6 +1027,11 @@ async function startImport(force) {
         if (response.status === 404 || response.status === 409) {
             const error = await readError(response);
             setStatus(error.message, "error");
+            // In ID mode a 409 is the taken-username guidance: keep the
+            // label focused for the retry.
+            if (response.status === 409 && currentLookupMode === "id") {
+                customUsernameInput.focus();
+            }
             return;
         }
         if (!response.ok) {
@@ -1172,6 +1212,7 @@ function formatDateTime(value) {
 function resetView() {
     currentLookup = null;
     currentLookupName = "";
+    currentLookupMode = "vanity";
 
     result.hidden = true;
     jobSection.hidden = true;
@@ -1225,14 +1266,47 @@ function setBusy(busy) {
 function setActionsBusy(busy) {
     importButton.disabled = busy;
     updateButton.disabled = busy;
+    customUsernameInput.disabled = busy;
 }
 
 function normalizeName(rawValue) {
     let name = rawValue.trim();
     if (name.toLowerCase().startsWith(PROFILE_PREFIX)) {
         name = name.slice(PROFILE_PREFIX.length);
+    } else if (name.toLowerCase().startsWith(PROFILE_ID_PREFIX)) {
+        name = name.slice(PROFILE_ID_PREFIX.length);
     }
     return name.replace(/\/+$/, "").trim();
+}
+
+// detectSteamID reads normalized input as a SteamID64 when it is pure
+// digits. The comparison stays on the string — IDs exceed JavaScript's safe
+// integer range — and the server does the authoritative validation.
+function detectSteamID(value) {
+    return /^\d{1,19}$/.test(value);
+}
+
+// prefillCustomUsername seeds the label with the looked-up persona name
+// after a first-import ID search — a read-only Steam preview of an
+// unstored user — when the field is still blank, so the stored name starts
+// as the person's real display name instead of the bare ID. Stored rows are
+// left alone: a blank label there means "keep the existing name", and
+// prefilling would silently rename the user on the next Update click.
+// Anything the user already typed always wins.
+function prefillCustomUsername(body) {
+    if (currentLookupMode !== "id" || body?.source !== "steam") {
+        return;
+    }
+    if (customUsernameInput.value.trim() !== "") {
+        return;
+    }
+    const persona = body?.steamUser?.personaName;
+    if (!persona) {
+        return;
+    }
+    customUsernameInput.value = [...persona]
+        .slice(0, MAX_CUSTOM_USERNAME_LENGTH)
+        .join("");
 }
 
 function lookupURL(name) {
@@ -1810,7 +1884,15 @@ function buildSteamUserRows(user, index, options = {}) {
     const nameLink = newElement("a", "app-cell__name", user.name ?? "");
     nameLink.href = `/user?name=${encodeURIComponent(user.name ?? "")}`;
     nameLink.dataset.route = "/user";
-    info.append(nameLink);
+    // Custom-labeled users (imported by Steam ID) get a quiet badge beside
+    // the name so the handle is not mistaken for a real vanity. Group member
+    // rows reuse this builder and get it for free.
+    const nameRow = newElement("div", "app-cell__name-row");
+    nameRow.append(nameLink);
+    if (user.customUsername) {
+        nameRow.append(badge("Custom name", "none"));
+    }
+    info.append(nameRow);
 
     // Match View User's Wishlist privacy line: the privacy state is a badge,
     // not plain text, so Public stays green and Private stays red.
@@ -3415,7 +3497,7 @@ function renderUserSummary(data) {
     }
 
     rows.push(
-        detailRow("Steam name", user.name ?? ""),
+        detailRowNode("Steam name", steamNameNode(user)),
         // Steam IDs exceed JavaScript's safe integer range, so keep them as text.
         detailRow(
             "Steam ID",
@@ -3450,6 +3532,17 @@ function renderUserSummary(data) {
         userSummaryNotice.textContent = "";
         userSummaryNotice.hidden = true;
     }
+}
+
+// steamNameNode shows the stored handle, with a quiet badge for users whose
+// name is a custom label rather than a real Steam vanity.
+function steamNameNode(user) {
+    const node = newElement("span");
+    node.append(user.name ?? "");
+    if (user.customUsername) {
+        node.append(document.createTextNode(" "), badge("Custom name", "none"));
+    }
+    return node;
 }
 
 function renderUserApps(data) {
@@ -5264,7 +5357,7 @@ function renderRoute() {
         }
     }
 
-    document.title = `${ROUTE_TITLES[route]} · Steam Decision Engine`;
+    document.title = `${ROUTE_TITLES[route]} · Game Picker Utility`;
 
     if (changed) {
         onRouteChange(previous, route);

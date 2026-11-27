@@ -7,6 +7,13 @@ WHERE lower(name) = lower(sqlc.arg(name))
 ORDER BY updated_at DESC
 LIMIT 1;
 
+-- name: GetSteamUserByCustomName :one
+-- Matches an app-assigned custom username, ignoring case. Vanity rows never
+-- match; the partial unique index keeps this at most one row.
+SELECT * FROM steam_users
+WHERE custom_username AND lower(name) = lower(sqlc.arg(name))
+LIMIT 1;
+
 -- name: SearchSteamUsers :many
 SELECT
     su.steam_id,
@@ -19,6 +26,7 @@ SELECT
     su.avatar_full,
     su.created_at,
     su.updated_at,
+    su.custom_username,
     (
         SELECT COUNT(DISTINCT aa.app_id)
         FROM steam_user_apps sua
@@ -100,6 +108,7 @@ INSERT INTO steam_users (
     avatar,
     avatar_medium,
     avatar_full,
+    custom_username,
     updated_at,
     created_at
 ) VALUES (
@@ -110,6 +119,7 @@ INSERT INTO steam_users (
     $5,
     $6,
     $7,
+    $8,
     NOW(),
     NOW()
 ) ON CONFLICT (steam_id) DO UPDATE SET
@@ -119,6 +129,7 @@ INSERT INTO steam_users (
     avatar = $5,
     avatar_medium = $6,
     avatar_full = $7,
+    custom_username = $8,
     updated_at = NOW()
 RETURNING *;
 
