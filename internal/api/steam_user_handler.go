@@ -174,8 +174,15 @@ func (handler *Handler) GetSteamUserByName(responseWriter http.ResponseWriter, r
 		return
 	}
 
-	// The name is not stored. Resolve it with read-only Steam calls; this
-	// path must not upsert the user or request an import.
+	// The name is not stored. Numeric input resolves by Steam ID; anything
+	// else is treated as a vanity name. Neither path writes anything.
+	if parsedID, parseErr := parseSteamID(name); parseErr == nil {
+		handler.respondIDLookup(responseWriter, request, parsedID)
+		return
+	}
+
+	// Resolve the vanity with read-only Steam calls; this path must not
+	// upsert the user or request an import.
 	steamID, player, err := handler.resolveSteamPlayer(ctx, name)
 	if err != nil {
 		if errors.Is(err, errSteamUserNotFound) {
@@ -200,6 +207,39 @@ func (handler *Handler) GetSteamUserByName(responseWriter http.ResponseWriter, r
 
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, steamUserLookupResponse{
 		SteamUser:   newSteamUserPreviewView(name, steamID, player),
+		Source:      lookupSourceSteam,
+		ImportState: importer.StateNotImported,
+	})
+}
+
+// respondIDLookup answers a numeric lookup: a stored row by ID first, so a
+// renamed or custom-labeled user keeps their import history, then a
+// read-only profile preview for users the database does not know. A 404
+// means Steam has no profile for the ID either.
+func (handler *Handler) respondIDLookup(responseWriter http.ResponseWriter, request *http.Request, steamID int64) {
+	ctx := request.Context()
+	stored, err := handler.apiStore.queries.GetSteamUser(ctx, steamID)
+	if err == nil {
+		handler.respondStoredLookup(responseWriter, request, stored, lookupSourceDatabase)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	player, err := handler.fetchSteamPlayerByID(ctx, steamID)
+	if err != nil {
+		if errors.Is(err, errSteamUserNotFound) {
+			httpx.RespondWithError(responseWriter, http.StatusNotFound, "steam user not found")
+			return
+		}
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, steamUserLookupResponse{
+		SteamUser:   newSteamUserPreviewView(formatSteamID(steamID), steamID, player),
 		Source:      lookupSourceSteam,
 		ImportState: importer.StateNotImported,
 	})

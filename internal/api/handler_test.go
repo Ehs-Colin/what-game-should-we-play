@@ -12,12 +12,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/auth"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbgen"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/database/dbtest"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/importer"
 	"github.com/Ehs-Colin/what-game-should-we-play/internal/steamapi"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -878,5 +880,327 @@ func TestInsertSteamUserSteamIDMismatchWritesNothing(t *testing.T) {
 	}
 	if rows != 0 {
 		t.Fatalf("%d jobs created, want 0", rows)
+	}
+}
+
+// ID-import tests (Phase 2): numeric lookup ordering, read-only ID previews,
+// the vanity-skipping POST path, and custom-username rules.
+
+func TestLookupNumericInputHitsStoredID(t *testing.T) {
+	calls := 0
+	env := newHandlerEnv(t, fakeResolver{ids: map[string]int64{}, calls: &calls})
+	seedSteamUser(t, env, testSteamID, testVanity)
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name="+testSteamIDString, "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserLookupResponse](t, recorder)
+	if body.Source != lookupSourceDatabase {
+		t.Errorf("source = %q, want database", body.Source)
+	}
+	if body.SteamUser.SteamID != testSteamIDString || body.SteamUser.Name != testVanity {
+		t.Errorf("steamUser = %q/%q, want the row stored under %q",
+			body.SteamUser.SteamID, body.SteamUser.Name, testVanity)
+	}
+	if body.ImportState != importer.StateNotImported {
+		t.Errorf("importState = %q, want not_imported", body.ImportState)
+	}
+	if calls != 0 {
+		t.Errorf("ResolveVanityURL called %d time(s), want 0 for numeric input", calls)
+	}
+}
+
+func TestLookupNumericNameBeatsIDMatch(t *testing.T) {
+	const (
+		labelledID = int64(76561198000000100)
+		targetID   = int64(76561198000000101)
+		digitsName = "76561198000000101"
+	)
+	env := newHandlerEnv(t, defaultResolver())
+	ctx := context.Background()
+	// A custom row whose stored name is another user's ID digits.
+	if _, err := env.queries.UpsertSteamUser(ctx, dbgen.UpsertSteamUserParams{
+		SteamID: labelledID, Name: digitsName, CustomUsername: true,
+	}); err != nil {
+		t.Fatalf("seed labelled row: %v", err)
+	}
+	seedSteamUser(t, env, targetID, "SomeOther")
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name="+digitsName, "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserLookupResponse](t, recorder)
+	if want := strconv.FormatInt(labelledID, 10); body.SteamUser.SteamID != want {
+		t.Fatalf("steamId = %q, want the row whose name matches the digits (%s)", body.SteamUser.SteamID, want)
+	}
+}
+
+func TestLookupIDPreviewWritesNothing(t *testing.T) {
+	const previewID = int64(76561198000000009)
+	calls := 0
+	env := newHandlerEnv(t, fakeResolver{calls: &calls})
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name="+strconv.FormatInt(previewID, 10), "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[steamUserLookupResponse](t, recorder)
+
+	if body.Source != lookupSourceSteam || body.ImportState != importer.StateNotImported {
+		t.Errorf("source/state = %q/%q, want steam/not_imported", body.Source, body.ImportState)
+	}
+	if body.SteamUser.Name != strconv.FormatInt(previewID, 10) {
+		t.Errorf("preview name = %q, want the canonical digits", body.SteamUser.Name)
+	}
+	if body.SteamUser.CustomUsername {
+		t.Errorf("preview customUsername = true, want false before any label is chosen")
+	}
+	if body.OwnedAppCount != nil || body.WishlistAppCount != nil {
+		t.Errorf("preview counts = %v/%v, want null/null", body.OwnedAppCount, body.WishlistAppCount)
+	}
+	if calls != 0 {
+		t.Errorf("ResolveVanityURL called %d time(s), want 0 — IDs skip vanity resolution", calls)
+	}
+	var rows int
+	if err := env.db.QueryRow("SELECT count(*) FROM steam_users").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Errorf("preview wrote %d steam_users rows, want 0", rows)
+	}
+}
+
+func TestLookupUnknownIDReturnsNotFound(t *testing.T) {
+	env := newHandlerEnv(t, fakeResolver{summaries: &steamapi.GetPlayerSummariesResponse{}})
+
+	recorder := env.do(t, http.MethodGet, "/api/steamusers?name=76561198000000009", "")
+	requireErrorMessage(t, recorder, http.StatusNotFound, "steam user not found")
+}
+
+func TestInsertSteamUserByIDWithLabel(t *testing.T) {
+	const importID = int64(76561198000000050)
+	calls := 0
+	env := newHandlerEnv(t, fakeResolver{calls: &calls})
+
+	recorder := env.do(t, http.MethodPost, "/api/steamuser",
+		fmt.Sprintf(`{"steamId":"%d","customUsername":"RaidBuddy"}`, importID))
+	body := decodeJSON[insertSteamUserResponse](t, recorder)
+	assertCreated(t, recorder, body)
+	if body.SteamUser.Name != "RaidBuddy" || !body.SteamUser.CustomUsername {
+		t.Errorf("response steamUser = %q custom=%v, want RaidBuddy with the flag",
+			body.SteamUser.Name, body.SteamUser.CustomUsername)
+	}
+	if calls != 0 {
+		t.Errorf("ResolveVanityURL called %d time(s), want 0 on the ID path", calls)
+	}
+
+	stored, err := env.queries.GetSteamUser(context.Background(), importID)
+	if err != nil {
+		t.Fatalf("get stored user: %v", err)
+	}
+	if stored.Name != "RaidBuddy" || !stored.CustomUsername {
+		t.Errorf("stored = %q custom=%v, want the label with the flag", stored.Name, stored.CustomUsername)
+	}
+	if _, err := env.queries.GetActiveImportJobForUser(context.Background(), importID); err != nil {
+		t.Errorf("no queued job for the imported ID: %v", err)
+	}
+}
+
+func TestInsertSteamUserByIDFallbackName(t *testing.T) {
+	const importID = int64(76561198000000051)
+	env := newHandlerEnv(t, defaultResolver())
+
+	recorder := env.do(t, http.MethodPost, "/api/steamuser",
+		fmt.Sprintf(`{"steamId":"%d"}`, importID))
+	body := decodeJSON[insertSteamUserResponse](t, recorder)
+	assertCreated(t, recorder, body)
+	if want := strconv.FormatInt(importID, 10); body.SteamUser.Name != want {
+		t.Errorf("name = %q, want the canonical digits %s", body.SteamUser.Name, want)
+	}
+	if !body.SteamUser.CustomUsername {
+		t.Errorf("digits fallback should carry the custom-name flag")
+	}
+}
+
+func TestInsertSteamUserByIDBlankLabelKeepsExistingName(t *testing.T) {
+	const customID = int64(76561198000000052)
+	const vanityishID = int64(76561198000000053)
+	env := newHandlerEnv(t, defaultResolver())
+	ctx := context.Background()
+	upsert := func(steamID int64, name string, custom bool) {
+		t.Helper()
+		if _, err := env.queries.UpsertSteamUser(ctx, dbgen.UpsertSteamUserParams{
+			SteamID: steamID, Name: name, CustomUsername: custom,
+		}); err != nil {
+			t.Fatalf("seed %d: %v", steamID, err)
+		}
+	}
+	upsert(customID, "RaidBuddy", true)
+	upsert(vanityishID, "RealVanity", false)
+
+	for _, test := range []struct {
+		id         int64
+		wantName   string
+		wantCustom bool
+	}{
+		{id: customID, wantName: "RaidBuddy", wantCustom: true},
+		{id: vanityishID, wantName: "RealVanity", wantCustom: false},
+	} {
+		recorder := env.do(t, http.MethodPost, "/api/steamuser",
+			fmt.Sprintf(`{"steamId":"%d"}`, test.id))
+		requireStatus(t, recorder, http.StatusAccepted)
+		stored, err := env.queries.GetSteamUser(ctx, test.id)
+		if err != nil {
+			t.Fatalf("get stored user: %v", err)
+		}
+		if stored.Name != test.wantName || stored.CustomUsername != test.wantCustom {
+			t.Errorf("re-import by ID with a blank label changed %+v to %q/%v, want %q/%v",
+				stored, stored.Name, stored.CustomUsername, test.wantName, test.wantCustom)
+		}
+	}
+}
+
+func TestInsertSteamUserIDLabelRenamesExistingRow(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	seedSteamUser(t, env, testSteamID, testVanity)
+
+	recorder := env.do(t, http.MethodPost, "/api/steamuser",
+		fmt.Sprintf(`{"steamId":"%s","customUsername":"NewLabel"}`, testSteamIDString))
+	// The seeded row has no import jobs, so the first import is created.
+	assertCreated(t, recorder, decodeJSON[insertSteamUserResponse](t, recorder))
+
+	stored, err := env.queries.GetSteamUser(context.Background(), testSteamID)
+	if err != nil {
+		t.Fatalf("get stored user: %v", err)
+	}
+	if stored.Name != "NewLabel" || !stored.CustomUsername {
+		t.Errorf("stored = %q custom=%v, want NewLabel with the flag", stored.Name, stored.CustomUsername)
+	}
+}
+
+func TestInsertSteamUserCustomNameConflict(t *testing.T) {
+	const takenID = int64(76561198000000054)
+	const freshID = int64(76561198000000055)
+	env := newHandlerEnv(t, defaultResolver())
+	if _, err := env.queries.UpsertSteamUser(context.Background(), dbgen.UpsertSteamUserParams{
+		SteamID: takenID, Name: "Taken Label", CustomUsername: true,
+	}); err != nil {
+		t.Fatalf("seed conflicting row: %v", err)
+	}
+
+	recorder := env.do(t, http.MethodPost, "/api/steamuser",
+		fmt.Sprintf(`{"steamId":"%d","customUsername":"taken LABEL"}`, freshID))
+	requireErrorMessage(t, recorder, http.StatusConflict, steamUsernameTakenMessage)
+
+	if _, err := env.queries.GetSteamUser(context.Background(), freshID); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("conflict wrote a row for %d: err = %v", freshID, err)
+	}
+	if got := env.jobCount(t); got != 0 {
+		t.Errorf("%d jobs created, want 0", got)
+	}
+}
+
+func TestInsertSteamUserVanityClearsCustomFlag(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	if _, err := env.queries.UpsertSteamUser(context.Background(), dbgen.UpsertSteamUserParams{
+		SteamID: testSteamID, Name: "Labelled", CustomUsername: true,
+	}); err != nil {
+		t.Fatalf("seed custom row: %v", err)
+	}
+
+	recorder, body := env.postUser(t)
+	if recorder.Code > 300 {
+		t.Fatalf("status = %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	if body.SteamUser.CustomUsername {
+		t.Errorf("response kept the custom flag after a vanity import")
+	}
+	stored, err := env.queries.GetSteamUser(context.Background(), testSteamID)
+	if err != nil {
+		t.Fatalf("get stored user: %v", err)
+	}
+	if stored.Name != testVanity || stored.CustomUsername {
+		t.Errorf("stored = %q custom=%v, want the vanity with the flag cleared",
+			stored.Name, stored.CustomUsername)
+	}
+}
+
+func TestInsertSteamUserRequiresAnIdentifier(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	for _, payload := range []string{`{}`, `{"vanityUrl":"  ","steamId":" "}`, `{"customUsername":"OnlyALabel"}`} {
+		recorder := env.do(t, http.MethodPost, "/api/steamuser", payload)
+		if recorder.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400 for %s (%s)", recorder.Code, payload, recorder.Body.String())
+		}
+	}
+	if got := env.jobCount(t); got != 0 {
+		t.Errorf("%d jobs created, want 0", got)
+	}
+}
+
+func TestInsertSteamUserCustomUsernameLength(t *testing.T) {
+	const importID = int64(76561198000000056)
+	env := newHandlerEnv(t, defaultResolver())
+
+	tooLong := fmt.Sprintf(`{"steamId":"%d","customUsername":"%s"}`, importID, strings.Repeat("a", maxSteamUserNameLength+1))
+	recorder := env.do(t, http.MethodPost, "/api/steamuser", tooLong)
+	requireStatus(t, recorder, http.StatusBadRequest)
+	if _, err := env.queries.GetSteamUser(context.Background(), importID); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("oversized label wrote a row: err = %v", err)
+	}
+
+	maxLabel := strings.Repeat("é", maxSteamUserNameLength)
+	payload := fmt.Sprintf(`{"steamId":"%d","customUsername":%q}`, importID, maxLabel)
+	recorder = env.do(t, http.MethodPost, "/api/steamuser", payload)
+	body := decodeJSON[insertSteamUserResponse](t, recorder)
+	assertCreated(t, recorder, body)
+	if body.SteamUser.Name != maxLabel {
+		t.Errorf("name length = %d, want the accepted %d-character label",
+			utf8.RuneCountInString(body.SteamUser.Name), maxSteamUserNameLength)
+	}
+}
+
+func TestCustomUsernameSurfacedInViewResponses(t *testing.T) {
+	const customID = int64(76561198000000060)
+	env := newHandlerEnv(t, defaultResolver())
+	if _, err := env.queries.UpsertSteamUser(context.Background(), dbgen.UpsertSteamUserParams{
+		SteamID: customID, Name: "RaidBuddy", CustomUsername: true,
+	}); err != nil {
+		t.Fatalf("seed custom row: %v", err)
+	}
+
+	users := decodeJSON[searchSteamUsersResponse](t,
+		env.do(t, http.MethodGet, "/api/steamusers/search?name=RaidBuddy", "")).SteamUsers
+	if len(users) != 1 || !users[0].CustomUsername {
+		t.Fatalf("search rows = %+v, want one custom row", users)
+	}
+
+	lookup := decodeJSON[steamUserLookupResponse](t,
+		env.do(t, http.MethodGet, "/api/steamusers?name=RaidBuddy", ""))
+	if !lookup.SteamUser.CustomUsername {
+		t.Errorf("lookup steamUser.customUsername = false, want true")
+	}
+
+	view := decodeJSON[steamUserViewResponse](t,
+		env.do(t, http.MethodGet, "/api/steamusers/by-name?name=RaidBuddy&list=owned", ""))
+	if !view.SteamUser.CustomUsername {
+		t.Errorf("view-user steamUser.customUsername = false, want true")
+	}
+
+	friends := seedGroup(t, env, "Friends", customID)
+	groupView := decodeJSON[groupViewResponse](t, getGroupView(t, env, "Friends"))
+	if len(groupView.Members) != 1 || !groupView.Members[0].CustomUsername {
+		t.Errorf("group members = %+v, want one custom row (group %d)", groupView.Members, friends.ID)
+	}
+}
+
+// The conflict pre-check fires before the upsert in every single-request
+// case, so the unique-violation mapping is only reachable through a racing
+// import; pin the detection itself instead.
+func TestIsUniqueViolationDetectsConstraintErrors(t *testing.T) {
+	if !isUniqueViolation(&pgconn.PgError{Code: "23505"}) {
+		t.Errorf("23505 not detected as a unique violation")
+	}
+	if isUniqueViolation(&pgconn.PgError{Code: "23503"}) {
+		t.Errorf("a foreign-key violation was misclassified")
+	}
+	if isUniqueViolation(errors.New("boom")) {
+		t.Errorf("a plain error was misclassified")
 	}
 }

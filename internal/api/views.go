@@ -13,6 +13,7 @@ type steamUserView struct {
 	SteamID         string  `json:"steamId"`
 	Name            string  `json:"name"`
 	WishlistPrivate bool    `json:"wishlistPrivate"`
+	CustomUsername  bool    `json:"customUsername"`
 	PersonaName     *string `json:"personaName"`
 	ProfileURL      *string `json:"profileUrl"`
 	Avatar          *string `json:"avatar"`
@@ -29,6 +30,7 @@ func newSteamUserView(user dbgen.SteamUser) steamUserView {
 		SteamID:         formatSteamID(user.SteamID),
 		Name:            user.Name,
 		WishlistPrivate: user.WishlistPrivate,
+		CustomUsername:  user.CustomUsername,
 		PersonaName:     nullableString(user.Personaname),
 		ProfileURL:      nullableString(user.Profileurl),
 		Avatar:          nullableString(user.Avatar),
@@ -144,6 +146,7 @@ type steamUserSummaryView struct {
 	SteamID              string         `json:"steamId"`
 	Name                 string         `json:"name"`
 	WishlistPrivate      bool           `json:"wishlistPrivate"`
+	CustomUsername       bool           `json:"customUsername"`
 	PersonaName          *string        `json:"personaName"`
 	ProfileURL           *string        `json:"profileUrl"`
 	Avatar               *string        `json:"avatar"`
@@ -164,6 +167,7 @@ func newSteamUserSummaryView(row dbgen.SearchSteamUsersRow) steamUserSummaryView
 		SteamID:            formatSteamID(row.SteamID),
 		Name:               row.Name,
 		WishlistPrivate:    row.WishlistPrivate,
+		CustomUsername:     row.CustomUsername,
 		PersonaName:        nullableString(row.Personaname),
 		ProfileURL:         nullableString(row.Profileurl),
 		Avatar:             nullableString(row.Avatar),

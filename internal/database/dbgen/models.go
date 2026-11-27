@@ -132,6 +132,7 @@ type SteamUser struct {
 	Avatar          sql.NullString `json:"avatar"`
 	AvatarMedium    sql.NullString `json:"avatar_medium"`
 	AvatarFull      sql.NullString `json:"avatar_full"`
+	CustomUsername  bool           `json:"custom_username"`
 }
 
 type SteamUserApp struct {

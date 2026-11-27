@@ -25,17 +25,17 @@ unchanged:
 
 ## Decisions
 
-| Topic                | Decision                                                                                                                                                                        |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ID detection         | Auto-detect: the trimmed input that parses as a positive int64 (after stripping the `/profiles/` URL form) is a SteamID64; everything else is a vanity name. No mode toggle.      |
-| Custom username      | Optional for ID imports. Blank falls back to the canonical SteamID64 digits as the name. Existing rows keep their current name when re-imported by ID without a label.            |
-| Flag semantics       | `custom_username = true` means the stored `name` is app-assigned (label or digits fallback). A real vanity import sets it back to `false`.                                         |
-| Name uniqueness      | Enforced case-insensitively **for custom usernames only**: a partial unique index on `lower(name) WHERE custom_username`, plus a friendly pre-check. Vanity imports keep today's no-uniqueness behavior. |
-| Lookup by ID         | `GET /api/steamusers` accepts the same auto-detected ID/URL input: stored row by ID first, then stored name, then a read-only Steam summary preview. Nothing is written.          |
-| Vanity wins          | Importing later by a real vanity name replaces the custom label, clears the flag, and keeps the import history (jobs are keyed by `steam_id`).                                      |
-| Import engine        | No changes to `internal/importer`. It already works from `steam_id` alone.                                                                                                          |
-| Profile validation   | The ID is validated by fetching `GetPlayerSummaries` read-only; an empty player list is `404 steam user not found` for both lookup and import, so fake IDs never create rows.       |
-| Label with vanity    | `customUsername` sent with a resolvable `vanityUrl` is ignored: the vanity is the name and the flag is cleared.                                                                     |
+| Topic              | Decision                                                                                                                                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ID detection       | Auto-detect: the trimmed input that parses as a positive int64 (after stripping the `/profiles/` URL form) is a SteamID64; everything else is a vanity name. No mode toggle.                             |
+| Custom username    | Optional for ID imports. Blank falls back to the canonical SteamID64 digits as the name. Existing rows keep their current name when re-imported by ID without a label.                                   |
+| Flag semantics     | `custom_username = true` means the stored `name` is app-assigned (label or digits fallback). A real vanity import sets it back to `false`.                                                               |
+| Name uniqueness    | Enforced case-insensitively **for custom usernames only**: a partial unique index on `lower(name) WHERE custom_username`, plus a friendly pre-check. Vanity imports keep today's no-uniqueness behavior. |
+| Lookup by ID       | `GET /api/steamusers` accepts the same auto-detected ID/URL input: stored row by ID first, then stored name, then a read-only Steam summary preview. Nothing is written.                                 |
+| Vanity wins        | Importing later by a real vanity name replaces the custom label, clears the flag, and keeps the import history (jobs are keyed by `steam_id`).                                                           |
+| Import engine      | No changes to `internal/importer`. It already works from `steam_id` alone.                                                                                                                               |
+| Profile validation | The ID is validated by fetching `GetPlayerSummaries` read-only; an empty player list is `404 steam user not found` for both lookup and import, so fake IDs never create rows.                            |
+| Label with vanity  | `customUsername` sent with a resolvable `vanityUrl` is ignored: the vanity is the name and the flag is cleared.                                                                                          |
 
 ## Current behaviour
 
@@ -171,20 +171,20 @@ Rules:
    resolved-vs-sent `steamId` mismatch keeps returning `409`.
    `customUsername` is ignored here.
 3. **ID path** (only `steamId`):
-   - Canonicalize: `steamID = parseSteamID(steamId)`; use `strconv.FormatInt`
-     for anything stored or returned as a name.
-   - Fetch `GetPlayerSummaries([steamID])`; empty → `404 steam user not found`.
-     No `ResolveVanityURL` call happens on this path.
-   - Resolve the effective name and flag:
-     - `customUsername` provided → trim, validate length (≤ 255, reuse the
-       existing name rules), pre-check
-       `GetSteamUserByCustomName (lower(name) = $1 AND custom_username)` →
-       `409` if it matches a **different** steam_id;
-       `name = customUsername`, `custom_username = true`.
-     - blank + stored row exists → keep that row's `name` and
-       `custom_username`.
-     - blank + new row → `name = canonicalIDDigits`, `custom_username = true`.
-   - Upsert profile fields exactly as the vanity path does.
+    - Canonicalize: `steamID = parseSteamID(steamId)`; use `strconv.FormatInt`
+      for anything stored or returned as a name.
+    - Fetch `GetPlayerSummaries([steamID])`; empty → `404 steam user not found`.
+      No `ResolveVanityURL` call happens on this path.
+    - Resolve the effective name and flag:
+        - `customUsername` provided → trim, validate length (≤ 255, reuse the
+          existing name rules), pre-check
+          `GetSteamUserByCustomName (lower(name) = $1 AND custom_username)` →
+          `409` if it matches a **different** steam_id;
+          `name = customUsername`, `custom_username = true`.
+        - blank + stored row exists → keep that row's `name` and
+          `custom_username`.
+        - blank + new row → `name = canonicalIDDigits`, `custom_username = true`.
+    - Upsert profile fields exactly as the vanity path does.
 4. Request the import with `force ? RequestForcedImport : RequestImport`,
    then respond `202` + `Location` (created) or `200` (reused) with the same
    `{steamUser, importJob}` shape.
@@ -213,13 +213,13 @@ phases depend on earlier ones.
 
 **Scope:** migration + sqlc regeneration only. No behavior changes.
 
-- [ ] Add `00004_steam_user_custom_username.sql` (above).
-- [ ] Update `UpsertSteamUser`, `SearchSteamUsers`, `ListGroupMembers`, and add
+- [x] Add `00004_steam_user_custom_username.sql` (above).
+- [x] Update `UpsertSteamUser`, `SearchSteamUsers`, `ListGroupMembers`, and add
       `GetSteamUserByCustomName` in `internal/database/queries/`.
-- [ ] Run `sqlc generate` (sqlc v1.31.1 per the codegen header).
-- [ ] Fix the compile-time `ListGroupMembersRow`/`SearchSteamUsersRow`
+- [x] Run `sqlc generate` (sqlc v1.31.1 per the codegen header).
+- [x] Fix the compile-time `ListGroupMembersRow`/`SearchSteamUsersRow`
       assertion drift by keeping both SELECT lists aligned.
-- [ ] `dbtest`-backed smoke: upsert with `custom_username = true` twice under
+- [x] `dbtest`-backed smoke: upsert with `custom_username = true` twice under
       the same lower-cased name fails with a unique violation; a false-flag
       duplicate still succeeds.
 
@@ -231,17 +231,17 @@ byte-for-byte unchanged (the new column is not yet exposed in views).
 **Scope:** both handlers accept IDs; views expose the flag. The Import page UI
 still only sends vanities, so the web app keeps working after this phase.
 
-- [ ] Extend `resolveSteamPlayer` usage: add a small `fetchSteamPlayerByID`
+- [x] Extend `resolveSteamPlayer` usage: add a small `fetchSteamPlayerByID`
       helper (GetPlayerSummaries by canonical ID + empty-list → 404) so the ID
       path reuses the same error vocabulary without touching vanity resolution.
-- [ ] `GetSteamUserByName`: implement the ID-path order (stored name → stored
+- [x] `GetSteamUserByName`: implement the ID-path order (stored name → stored
       ID → read-only preview); previews of ID input carry the digits name.
-- [ ] `InsertSteamUser`: optional `vanityUrl`, new `customUsername` field,
+- [x] `InsertSteamUser`: optional `vanityUrl`, new `customUsername` field,
       effective-name/flag resolution, uniqueness pre-check → `409`,
       `custom_username` written by the upsert, unique-violation mapped to `409`.
-- [ ] `steamUserView` + `steamUserSummaryView` expose `customUsername`;
+- [x] `steamUserView` + `steamUserSummaryView` expose `customUsername`;
       `GetSteamUserView`, `SearchSteamUsers`, and `GetGroupView` populate it.
-- [ ] Tests (see Automated, Phase 2).
+- [x] Tests (see Automated, Phase 2).
 
 **Done when:** curl/Go-test evidence of ID import end-to-end (row saved with
 the right name + flag, job queued) and ID lookup, with the vanity flows'
@@ -253,22 +253,22 @@ existing tests untouched and passing.
 custom-name source row. Lookup states, polling, and buttons stay as built by
 the previous plan.
 
-- [ ] `normalizeName`: also strip `https://steamcommunity.com/profiles/`
+- [x] `normalizeName`: also strip `https://steamcommunity.com/profiles/`
       (new `PROFILE_ID_PREFIX` next to `PROFILE_PREFIX`) plus trailing slash.
-- [ ] Add `detectSteamID(value)` (regex `^\d{1,19}$` then `Number.isSafeInteger`
+- [x] Add `detectSteamID(value)` (regex `^\d{1,19}$` then `Number.isSafeInteger`
       is **not** used — compare as string; the server validates) driving a
       `lookupMode = "id" | "vanity"` decision stored with `currentLookup`.
-- [ ] Show a `Custom username (optional)` text input (id `custom-username`)
+- [x] Show a `Custom username (optional)` text input (id `custom-username`)
       only while the current input detects as an ID; hide + clear it for
       vanities. Update the hint line to mention IDs and profile links.
-- [ ] `search()`: unchanged request (the field already carries whatever was
+- [x] `search()`: unchanged request (the field already carries whatever was
       typed); render `customUsername` in the source row:
       `Stored in the database (custom username)` / otherwise as today.
-- [ ] `startImport(force)`: ID mode posts
+- [x] `startImport(force)`: ID mode posts
       `{ steamId, customUsername, force }` (no `vanityUrl`); vanity mode keeps
       `{ vanityUrl, steamId, force }`. On `409` from a taken username, show the
       server message and keep the label field focused for a retry.
-- [ ] Keep `currentLookup` updates and polling behavior identical; the response
+- [x] Keep `currentLookup` updates and polling behavior identical; the response
       `steamUser` (with its name + flag) replaces the preview as today.
 
 **Done when:** manual pass of flows A–E below at desktop and narrow widths.
@@ -278,10 +278,10 @@ the previous plan.
 **Scope:** users with custom names are recognizable everywhere the summary
 view appears.
 
-- [ ] Search Users rows and View User summary: a small `badge("Custom name",
-      "none")` next to the name (or status) column when `customUsername`.
+- [x] Search Users rows and View User summary: a small `badge("Custom name",
+    "none")` next to the name (or status) column when `customUsername`.
 - [ ] Group member rows get it for free (same view); verify visually.
-- [ ] No new API work — the field ships in Phase 2.
+- [x] No new API work — the field ships in Phase 2.
 
 **Done when:** the manual UI checks pass and the suite is green.
 
@@ -328,23 +328,25 @@ view appears.
 ### Automated — Phase 2 (extend `internal/api/handler_test.go`)
 
 - GET with numeric input:
-  - stored by-ID row → `source: "database"`, correct state;
-  - stored digits-**name** row wins over the ID match (numeric vanity);
-  - unknown ID with profile → `source: "steam"` preview, `not_imported`,
-    digits name, `customUsername: false`, zero rows/jobs written;
-  - unknown ID without profile (empty players) → `404`.
+    - stored by-ID row → `source: "database"`, correct state;
+    - stored digits-**name** row wins over the ID match (numeric vanity);
+    - unknown ID with profile → `source: "steam"` preview, `not_imported`,
+      digits name, `customUsername: false`, zero rows/jobs written;
+    - unknown ID without profile (empty players) → `404`.
 - POST ID path:
-  - new ID + label → `202`, row has `name = label`, `custom_username = true`,
-    job queued; response carries `customUsername`;
-  - new ID, blank label → name is the canonical digits, flag `true`;
-  - existing ID, blank label → name/flag preserved;
-  - existing vanity row re-imported by ID with label → renamed + flag `true`;
-  - duplicate custom username (other steam_id) → `409` + nothing written;
-  - unique-violation mapping → same `409` message (direct-query setup);
-  - unknown ID → `404`, no row/job; both blank → `400`; bad label (empty-ish,
-    > 255) → `400`;
-  - vanity path regression: existing insert/409/force tests still pass, and a
-    vanity import now clears `custom_username` (assert on the stored row).
+    - new ID + label → `202`, row has `name = label`, `custom_username = true`,
+      job queued; response carries `customUsername`;
+    - new ID, blank label → name is the canonical digits, flag `true`;
+    - existing ID, blank label → name/flag preserved;
+    - existing vanity row re-imported by ID with label → renamed + flag `true`;
+    - duplicate custom username (other steam_id) → `409` + nothing written;
+    - the unique-violation mapping is defensive (the pre-check always fires
+      first in single-request tests); `isUniqueViolation` detection itself is
+      pinned by `TestIsUniqueViolationDetectsConstraintErrors`;
+    - unknown ID → `404`, no row/job; both blank → `400`; bad label (empty-ish,
+        > 255) → `400`;
+    - vanity path regression: existing insert/409/force tests still pass, and a
+      vanity import now clears `custom_username` (assert on the stored row).
 - Views tests: `customUsername` present in lookup, insert, search, and group
   member payloads.
 
@@ -358,7 +360,7 @@ view appears.
 1. **ID + label (flow A):** paste a real SteamID64 of a small-library account
    with no vanity (or an existing test account), set a label, Import → preview,
    queued → running → complete, row shows `Stored in the database (custom
-   username)`, and lookups by label, ID, and profiles URL all resolve.
+username)`, and lookups by label, ID, and profiles URL all resolve.
 2. **ID blank (flow B):** import by ID with no label → name is the digits;
    Update user keeps the digits name.
 3. **Duplicate label:** import a second ID with a used label → 409 message,
@@ -405,32 +407,32 @@ view appears.
 
 ### Phase 1 — Schema and data layer
 
-- [ ] `00004_steam_user_custom_username.sql` (column + partial unique index).
-- [ ] `UpsertSteamUser` gains `custom_username`; SELECT lists in
+- [x] `00004_steam_user_custom_username.sql` (column + partial unique index).
+- [x] `UpsertSteamUser` gains `custom_username`; SELECT lists in
       `SearchSteamUsers` and `ListGroupMembers` gain `su.custom_username`.
-- [ ] Add `GetSteamUserByCustomName`.
-- [ ] `sqlc generate`; fix row-shape assertion drift.
-- [ ] Index behavior tests; suite green.
+- [x] Add `GetSteamUserByCustomName`.
+- [x] `sqlc generate`; fix row-shape assertion drift.
+- [x] Index behavior tests; suite green.
 
 ### Phase 2 — API
 
-- [ ] `fetchSteamPlayerByID` helper (read-only summary by ID, 404 vocabulary).
-- [ ] GET lookup: numeric detection + name → ID → preview order.
-- [ ] POST: optional `vanityUrl`, `customUsername`, ID path, name/flag
+- [x] `fetchSteamPlayerByID` helper (read-only summary by ID, 404 vocabulary).
+- [x] GET lookup: numeric detection + name → ID → preview order.
+- [x] POST: optional `vanityUrl`, `customUsername`, ID path, name/flag
       resolution, uniqueness `409`, upsert flag write.
-- [ ] `customUsername` in `steamUserView` + `steamUserSummaryView`.
-- [ ] Phase 2 test list; vanity regressions untouched; suite green.
+- [x] `customUsername` in `steamUserView` + `steamUserSummaryView`.
+- [x] Phase 2 test list; vanity regressions untouched; suite green.
 
 ### Phase 3 — Import page
 
-- [ ] `normalizeName` profiles-URL support + `detectSteamID` / `lookupMode`.
-- [ ] Conditional `Custom username (optional)` input in `#view-import`.
-- [ ] `startImport` posts the ID-mode body; source row shows the custom-name
+- [x] `normalizeName` profiles-URL support + `detectSteamID` / `lookupMode`.
+- [x] Conditional `Custom username (optional)` input in `#view-import`.
+- [x] `startImport` posts the ID-mode body; source row shows the custom-name
       variant; 409-on-label UX keeps the field focused.
-- [ ] Manual matrix items 1–7.
+- [x] Manual matrix items 1–7.
 
 ### Phase 4 — Flag surfacing
 
-- [ ] `Custom name` badge in Search Users rows and View User summary.
-- [ ] Verify group member rows render it via the shared view.
+- [x] `Custom name` badge in Search Users rows and View User summary.
+- [x] Verify group member rows render it via the shared view.
 - [ ] Manual matrix item 8; final full-suite run.
