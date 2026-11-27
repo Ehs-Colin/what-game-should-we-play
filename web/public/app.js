@@ -109,6 +109,19 @@ const metricApps = document.querySelector("#metric-apps");
 const metricRunning = document.querySelector("#metric-running");
 const metricQueued = document.querySelector("#metric-queued");
 
+// Admin Panel import jobs list.
+const importJobsStatus = document.querySelector("#import-jobs-status");
+const importJobsToolbar = document.querySelector("#import-jobs-toolbar");
+const importJobsCount = document.querySelector("#import-jobs-count");
+const importJobsPageSize = document.querySelector("#import-jobs-page-size");
+const importJobsResultsPanel = document.querySelector(
+    "#import-jobs-results-panel",
+);
+const importJobsResults = document.querySelector("#import-jobs-results");
+const importJobsPagination = document.querySelector(
+    "#import-jobs-pagination",
+);
+
 const searchControls = document.querySelector("#search-controls");
 const searchSort = document.querySelector("#search-sort");
 const searchDirection = document.querySelector("#search-direction");
@@ -300,6 +313,13 @@ let currentLookupMode = "vanity";
 let dashboardTimer = null;
 let dashboardController = null;
 
+// The job rows shown under the At a Glance metrics. expandedImportJobs keeps
+// opened rows open across the 5-second refresh, keyed by String(job.id).
+let importJobs = [];
+let importJobsPage = 1;
+let importJobsRowsPerPage = 10;
+const expandedImportJobs = new Set();
+
 let searchToken = 0;
 let searchController = null;
 let searchBusy = false;
@@ -444,6 +464,12 @@ searchGroupsPageSize.addEventListener("change", () => {
 searchGroupsReset.addEventListener("click", () => {
     resetGroupSearchControls();
     renderGroupSearchResults();
+});
+
+importJobsPageSize.addEventListener("change", () => {
+    importJobsRowsPerPage = searchPageSizeFromValue(importJobsPageSize.value);
+    importJobsPage = 1;
+    renderImportJobs();
 });
 
 userForm.addEventListener("submit", (event) => {
@@ -1953,28 +1979,37 @@ function buildSteamUserRows(user, index, options = {}) {
 }
 
 // Returns the expand cell for a table row: a chevron button that shows or hides
-// detailsRow and keeps aria-expanded and the label in sync.
-function buildExpandToggle(label, detailsID, detailsRow) {
+// detailsRow and keeps aria-expanded and the label in sync. options.expanded
+// opens the row as it is built, and options.onToggle reports each click so a
+// caller can remember the state across a re-render.
+function buildExpandToggle(label, detailsID, detailsRow, options = {}) {
     const toggle = newElement("button", "button--secondary app-expand");
     toggle.type = "button";
-    toggle.setAttribute("aria-expanded", "false");
+
+    const expanded = options.expanded === true;
+    toggle.setAttribute("aria-expanded", String(expanded));
     toggle.setAttribute("aria-controls", detailsID);
-    toggle.setAttribute("aria-label", `Show details for ${label}`);
+    toggle.setAttribute(
+        "aria-label",
+        expanded ? `Hide details for ${label}` : `Show details for ${label}`,
+    );
+    detailsRow.hidden = !expanded;
 
     const chevron = newElement("span", "app-expand__chevron");
     chevron.setAttribute("aria-hidden", "true");
     toggle.append(chevron);
 
     toggle.addEventListener("click", () => {
-        const expanded = toggle.getAttribute("aria-expanded") === "true";
-        toggle.setAttribute("aria-expanded", String(!expanded));
+        const nextExpanded = toggle.getAttribute("aria-expanded") !== "true";
+        toggle.setAttribute("aria-expanded", String(nextExpanded));
         toggle.setAttribute(
             "aria-label",
-            expanded
-                ? `Show details for ${label}`
-                : `Hide details for ${label}`,
+            nextExpanded
+                ? `Hide details for ${label}`
+                : `Show details for ${label}`,
         );
-        detailsRow.hidden = expanded;
+        detailsRow.hidden = !nextExpanded;
+        options.onToggle?.(nextExpanded);
     });
 
     const expandCell = newElement("td", "app-expand-cell");
@@ -5192,36 +5227,42 @@ async function loadDashboard() {
     const controller = new AbortController();
     dashboardController = controller;
 
+    // Both boxes reload on the one timer, but each renders from its own
+    // result, so a failing endpoint cannot blank the other.
+    const [statsResult, jobsResult] = await Promise.allSettled([
+        fetchDashboardStats(controller.signal),
+        fetchImportJobs(controller.signal),
+    ]);
+
     try {
-        const response = await apiFetch("/api/dashboard", {
-            headers: { Accept: "application/json" },
-            signal: controller.signal,
-        });
-        if (controller.signal.aborted) {
-            return;
-        }
-        if (!response.ok) {
-            throw await readError(response);
-        }
-
-        const body = await response.json();
         if (controller.signal.aborted) {
             return;
         }
 
-        renderDashboard(body);
-        dashboardMetrics.setAttribute("aria-busy", "false");
-        setDashboardStatus("");
-        dashboardUpdated.textContent = `Updated at ${formatClock(new Date())}`;
-    } catch (error) {
-        if (isAbort(error) || controller.signal.aborted) {
-            return;
+        if (statsResult.status === "fulfilled") {
+            renderDashboard(statsResult.value);
+            dashboardMetrics.setAttribute("aria-busy", "false");
+            setDashboardStatus("");
+            dashboardUpdated.textContent = `Updated at ${formatClock(
+                new Date(),
+            )}`;
+        } else if (!isAbort(statsResult.reason) && !controller.signal.aborted) {
+            dashboardMetrics.setAttribute("aria-busy", "false");
+            setDashboardStatus(
+                "Could not refresh the dashboard; retrying…",
+                "error",
+            );
         }
-        dashboardMetrics.setAttribute("aria-busy", "false");
-        setDashboardStatus(
-            "Could not refresh the dashboard; retrying…",
-            "error",
-        );
+
+        if (jobsResult.status === "fulfilled") {
+            showImportJobs(jobsResult.value?.importJobs);
+        } else if (!isAbort(jobsResult.reason) && !controller.signal.aborted) {
+            // Keep the rows already on screen and say the reload failed.
+            setImportJobsStatus(
+                "Could not load import jobs; retrying…",
+                "error",
+            );
+        }
     } finally {
         if (dashboardController === controller) {
             dashboardController = null;
@@ -5229,6 +5270,28 @@ async function loadDashboard() {
     }
 
     scheduleDashboardRefresh();
+}
+
+async function fetchDashboardStats(signal) {
+    const response = await apiFetch("/api/dashboard", {
+        headers: { Accept: "application/json" },
+        signal,
+    });
+    if (!response.ok) {
+        throw await readError(response);
+    }
+    return response.json();
+}
+
+async function fetchImportJobs(signal) {
+    const response = await apiFetch("/api/import-jobs", {
+        headers: { Accept: "application/json" },
+        signal,
+    });
+    if (!response.ok) {
+        throw await readError(response);
+    }
+    return response.json();
 }
 
 function renderDashboard(stats) {
@@ -5257,6 +5320,216 @@ function setDashboardStatus(message, state) {
         dashboardStatus.dataset.state = state;
     } else {
         delete dashboardStatus.dataset.state;
+    }
+}
+
+// Stores a freshly loaded job list and shows either the empty state or the
+// current page of rows.
+function showImportJobs(jobs) {
+    importJobs = sortImportJobs(Array.isArray(jobs) ? jobs : []);
+    if (importJobs.length === 0) {
+        clearImportJobs();
+        setImportJobsStatus("No import jobs yet.");
+        return;
+    }
+    setImportJobsStatus("");
+    renderImportJobs();
+}
+
+function renderImportJobs() {
+    if (importJobs.length === 0) {
+        clearImportJobs();
+        return;
+    }
+
+    importJobsPageSize.value = String(importJobsRowsPerPage);
+    const totalPages = totalPageCount(importJobs.length, importJobsRowsPerPage);
+    importJobsPage = clampPage(importJobsPage, totalPages);
+    const start = (importJobsPage - 1) * importJobsRowsPerPage;
+    const pageJobs = importJobs.slice(start, start + importJobsRowsPerPage);
+
+    importJobsResults.replaceChildren(
+        ...pageJobs.flatMap((job, index) => buildImportJobRows(job, index)),
+    );
+    importJobsToolbar.hidden = false;
+    importJobsResultsPanel.hidden = false;
+    importJobsCount.hidden = false;
+    importJobsCount.textContent = `Page ${importJobsPage} of ${totalPages} · ${formatCount(
+        importJobs.length,
+    )} ${importJobs.length === 1 ? "job" : "jobs"}`;
+    renderPagination(
+        importJobsPagination,
+        importJobsPage,
+        totalPages,
+        goToImportJobsPage,
+    );
+}
+
+// The server already returns rows newest first; this keeps that order even if
+// a response arrives out of sequence, breaking ties on the job ID.
+function sortImportJobs(jobs) {
+    return [...jobs].sort((left, right) => {
+        const byCreated =
+            new Date(right.createdAt ?? 0) - new Date(left.createdAt ?? 0);
+        if (byCreated !== 0) {
+            return byCreated;
+        }
+        return countValue(right.id) - countValue(left.id);
+    });
+}
+
+function goToImportJobsPage(page) {
+    const totalPages = totalPageCount(importJobs.length, importJobsRowsPerPage);
+    if (
+        !Number.isInteger(page) ||
+        page < 1 ||
+        page > totalPages ||
+        page === importJobsPage
+    ) {
+        return;
+    }
+    importJobsPage = page;
+    renderImportJobs();
+}
+
+function buildImportJobRows(job, index) {
+    const jobID = String(job.id ?? "unknown");
+    const row = document.createElement("tr");
+    row.className = "app-row";
+
+    const nameCell = newElement("td", "app-cell");
+    const body = newElement("div", "app-cell__body");
+    const info = newElement("div", "app-cell__info");
+
+    const nameLink = newElement("a", "app-cell__name", job.steamUserName ?? "");
+    nameLink.href = `/user?name=${encodeURIComponent(job.steamUserName ?? "")}`;
+    nameLink.dataset.route = "/user";
+
+    info.append(
+        nameLink,
+        newElement("p", "app-cell__meta", `Steam ID: ${job.steamId ?? ""}`),
+    );
+    body.append(info);
+    nameCell.append(body);
+
+    const countCell = newElement("td", "import-job-count");
+    countCell.textContent = `${formatCount(importedAppCount(job))}/${formatCount(
+        totalAppCount(job),
+    )}`;
+
+    const status = importJobStatus(job.status);
+    const statusCell = newElement("td");
+    statusCell.append(badge(status.label, status.tone));
+
+    const detailsID = `import-job-details-${jobID}-${index}`;
+    const detailsRow = document.createElement("tr");
+    detailsRow.className = "app-details-row";
+    detailsRow.hidden = true;
+
+    const detailsCell = newElement("td", "app-details-cell");
+    detailsCell.colSpan = 4;
+
+    const details = newElement("div", "app-details");
+    details.id = detailsID;
+    details.append(buildImportJobDetails(job));
+    detailsCell.append(details);
+    detailsRow.append(detailsCell);
+
+    const expandCell = buildExpandToggle(
+        job.steamUserName ?? "import job",
+        detailsID,
+        detailsRow,
+        {
+            expanded: expandedImportJobs.has(jobID),
+            onToggle: (expanded) => {
+                if (expanded) {
+                    expandedImportJobs.add(jobID);
+                } else {
+                    expandedImportJobs.delete(jobID);
+                }
+            },
+        },
+    );
+
+    row.append(nameCell, countCell, statusCell, expandCell);
+    return [row, detailsRow];
+}
+
+function buildImportJobDetails(job) {
+    const details = newElement("dl", "details app-details__list");
+    details.append(
+        detailRow("Job ID", String(job.id ?? "")),
+        detailRow("Steam user name", job.steamUserName ?? ""),
+        detailRow("Steam ID", String(job.steamId ?? "")),
+        detailRow("Status", importJobStatus(job.status).label),
+        detailRow("Created", formatDateTime(job.createdAt) || "—"),
+        detailRow("Started", formatDateTime(job.startedAt) || "—"),
+        detailRow("Finished", formatDateTime(job.finishedAt) || "—"),
+        detailRow("Owned apps total", formatCount(job.totalApps)),
+        detailRow("Owned apps processed", formatCount(job.processedApps)),
+        detailRow("Owned apps skipped", formatCount(job.skippedApps)),
+        detailRow("Owned apps failed", formatCount(job.failedApps)),
+        detailRow("Wishlist apps total", formatCount(job.wishlistTotalApps)),
+        detailRow(
+            "Wishlist apps processed",
+            formatCount(job.wishlistProcessedApps),
+        ),
+        detailRow(
+            "Wishlist apps skipped",
+            formatCount(job.wishlistSkippedApps),
+        ),
+        detailRow("Wishlist apps failed", formatCount(job.wishlistFailedApps)),
+    );
+    if (job.error) {
+        details.append(detailRow("Error", job.error));
+    }
+    return details;
+}
+
+// Job states keep their own wording: the list reports what the worker did,
+// unlike importStatus, which tells a user whether their data is usable.
+function importJobStatus(status) {
+    switch (status) {
+        case "queued":
+            return { label: "Queued", tone: "queued" };
+        case "running":
+            return { label: "Running", tone: "running" };
+        case "succeeded":
+            return { label: "Succeeded", tone: "succeeded" };
+        case "failed":
+            return { label: "Failed", tone: "failed" };
+        default:
+            return { label: "Unknown", tone: "unknown" };
+    }
+}
+
+// A queued job reports 0/0 until the worker records the totals.
+function importedAppCount(job) {
+    return (
+        countValue(job.processedApps) + countValue(job.wishlistProcessedApps)
+    );
+}
+
+function totalAppCount(job) {
+    return countValue(job.totalApps) + countValue(job.wishlistTotalApps);
+}
+
+function clearImportJobs() {
+    importJobs = [];
+    importJobsResults.replaceChildren();
+    importJobsResultsPanel.hidden = true;
+    importJobsToolbar.hidden = true;
+    importJobsCount.textContent = "";
+    importJobsCount.hidden = true;
+    importJobsPagination.replaceChildren();
+}
+
+function setImportJobsStatus(message, state) {
+    importJobsStatus.textContent = message;
+    if (state) {
+        importJobsStatus.dataset.state = state;
+    } else {
+        delete importJobsStatus.dataset.state;
     }
 }
 

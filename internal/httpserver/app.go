@@ -68,6 +68,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	dynamicMux.HandleFunc("GET /api/steamusers/search", apiHandler.SearchSteamUsers)
 	dynamicMux.HandleFunc("GET /api/steamusers/by-ids", apiHandler.GetSteamUsersByIDs)
 	dynamicMux.HandleFunc("GET /api/steamusers/by-name", apiHandler.GetSteamUserView)
+	dynamicMux.HandleFunc("GET /api/import-jobs", apiHandler.ListImportJobs)
 	dynamicMux.HandleFunc("GET /api/import-jobs/{id}", apiHandler.GetImportJob)
 	dynamicMux.HandleFunc("POST /api/common-games", apiHandler.GetCommonGames)
 	dynamicMux.HandleFunc("POST /api/groups", apiHandler.CreateGroup)

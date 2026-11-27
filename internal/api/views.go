@@ -284,6 +284,37 @@ func newImportJobView(job dbgen.ImportJob) importJobView {
 	return view
 }
 
+// importJobListView is an import job with the display name of the user it ran
+// for, so the Admin Panel can label a row without a second request. Embedding
+// keeps the JSON flat: every job field plus steamUserName.
+type importJobListView struct {
+	importJobView
+	SteamUserName string `json:"steamUserName"`
+}
+
+func newImportJobListView(row dbgen.ListImportJobsRow) importJobListView {
+	return importJobListView{
+		importJobView: newImportJobView(dbgen.ImportJob{
+			ID:                    row.ID,
+			SteamID:               row.SteamID,
+			Status:                row.Status,
+			TotalApps:             row.TotalApps,
+			ProcessedApps:         row.ProcessedApps,
+			SkippedApps:           row.SkippedApps,
+			FailedApps:            row.FailedApps,
+			WishlistTotalApps:     row.WishlistTotalApps,
+			WishlistProcessedApps: row.WishlistProcessedApps,
+			WishlistSkippedApps:   row.WishlistSkippedApps,
+			WishlistFailedApps:    row.WishlistFailedApps,
+			Error:                 row.Error,
+			CreatedAt:             row.CreatedAt,
+			StartedAt:             row.StartedAt,
+			FinishedAt:            row.FinishedAt,
+		}),
+		SteamUserName: row.SteamUserName,
+	}
+}
+
 func formatSteamID(steamID int64) string {
 	return strconv.FormatInt(steamID, 10)
 }

@@ -146,47 +146,117 @@
             </section>
 
             <section id="view-dashboard" data-view="/admin-panel" hidden>
-                <div class="card">
-                    <header class="card__header">
-                        <p class="eyebrow">Admin Panel</p>
-                        <h1 tabindex="-1">Imported Steam data at a glance</h1>
-                        <p class="lede">
-                            Counts come from the database and refresh while this
-                            page is open.
-                        </p>
-                    </header>
+                <div class="card-stack">
+                    <div class="card">
+                        <header class="card__header">
+                            <p class="eyebrow">Admin Panel</p>
+                            <h1 tabindex="-1">
+                                Imported Steam data at a glance
+                            </h1>
+                            <p class="lede">
+                                Counts come from the database and refresh while
+                                this page is open.
+                            </p>
+                        </header>
 
-                    <p
-                        id="dashboard-status"
-                        class="status"
-                        role="status"
-                        aria-live="polite"
-                    ></p>
+                        <p
+                            id="dashboard-status"
+                            class="status"
+                            role="status"
+                            aria-live="polite"
+                        ></p>
 
-                    <div
-                        id="dashboard-metrics"
-                        class="metric-grid"
-                        aria-busy="true"
-                    >
-                        <article class="metric">
-                            <p class="metric__label">Steam users</p>
-                            <p id="metric-users" class="metric__value">—</p>
-                        </article>
-                        <article class="metric">
-                            <p class="metric__label">Apps imported</p>
-                            <p id="metric-apps" class="metric__value">—</p>
-                        </article>
-                        <article class="metric">
-                            <p class="metric__label">Running import jobs</p>
-                            <p id="metric-running" class="metric__value">—</p>
-                        </article>
-                        <article class="metric">
-                            <p class="metric__label">Queued import jobs</p>
-                            <p id="metric-queued" class="metric__value">—</p>
-                        </article>
+                        <div
+                            id="dashboard-metrics"
+                            class="metric-grid"
+                            aria-busy="true"
+                        >
+                            <article class="metric">
+                                <p class="metric__label">Steam users</p>
+                                <p id="metric-users" class="metric__value">—</p>
+                            </article>
+                            <article class="metric">
+                                <p class="metric__label">Apps imported</p>
+                                <p id="metric-apps" class="metric__value">—</p>
+                            </article>
+                            <article class="metric">
+                                <p class="metric__label">Running import jobs</p>
+                                <p id="metric-running" class="metric__value">
+                                    —
+                                </p>
+                            </article>
+                            <article class="metric">
+                                <p class="metric__label">Queued import jobs</p>
+                                <p id="metric-queued" class="metric__value">
+                                    —
+                                </p>
+                            </article>
+                        </div>
+
+                        <p id="dashboard-updated" class="hint"></p>
                     </div>
 
-                    <p id="dashboard-updated" class="hint"></p>
+                    <div class="card">
+                        <header class="card__header">
+                            <p class="eyebrow">Import jobs</p>
+                            <h2 class="section-title">Import jobs</h2>
+                            <p class="lede">
+                                Every import job, newest first. Expand a row for
+                                details.
+                            </p>
+                        </header>
+
+                        <p
+                            id="import-jobs-status"
+                            class="status"
+                            role="status"
+                            aria-live="polite"
+                        ></p>
+
+                        <div
+                            id="import-jobs-toolbar"
+                            class="app-toolbar"
+                            hidden
+                        >
+                            <p id="import-jobs-count" class="hint"></p>
+                            <label>
+                                Rows per page
+                                <select id="import-jobs-page-size">
+                                    <option value="10">10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <div
+                            id="import-jobs-results-panel"
+                            class="table-scroll"
+                            hidden
+                        >
+                            <table id="import-jobs-table" class="app-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Steam user</th>
+                                        <th scope="col">Imported / Total</th>
+                                        <th scope="col">Status</th>
+                                        <th
+                                            scope="col"
+                                            class="app-expand-heading"
+                                            aria-label="Expand"
+                                        ></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="import-jobs-results"></tbody>
+                            </table>
+                        </div>
+
+                        <nav
+                            id="import-jobs-pagination"
+                            class="pagination"
+                            aria-label="Import job pages"
+                        ></nav>
+                    </div>
                 </div>
             </section>
 

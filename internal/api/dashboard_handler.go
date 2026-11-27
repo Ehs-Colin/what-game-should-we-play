@@ -34,6 +34,27 @@ func (handler *Handler) GetDashboard(responseWriter http.ResponseWriter, request
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, response)
 }
 
+type importJobsResponse struct {
+	ImportJobs []importJobListView `json:"importJobs"`
+}
+
+// ListImportJobs returns every import job, newest first. The browser handles
+// sorting ties and pagination.
+func (handler *Handler) ListImportJobs(responseWriter http.ResponseWriter, request *http.Request) {
+	rows, err := handler.apiStore.queries.ListImportJobs(request.Context())
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+
+	// make(..., 0, ...) serializes an empty list as [], not null.
+	jobs := make([]importJobListView, 0, len(rows))
+	for _, row := range rows {
+		jobs = append(jobs, newImportJobListView(row))
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, importJobsResponse{ImportJobs: jobs})
+}
+
 func (handler *Handler) GetImportJob(responseWriter http.ResponseWriter, request *http.Request) {
 	id, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
 	if err != nil {

@@ -1077,3 +1077,152 @@ func TestGetSteamUserViewLatestImportAndActiveJob(t *testing.T) {
 		})
 	}
 }
+
+// importJobCounters are the eight counters a job records while it runs.
+type importJobCounters struct {
+	total             int32
+	processed         int32
+	skipped           int32
+	failed            int32
+	wishlistTotal     int32
+	wishlistProcessed int32
+	wishlistSkipped   int32
+	wishlistFailed    int32
+}
+
+func setImportJobStartedAt(t *testing.T, env *handlerEnv, id int64, at time.Time) {
+	t.Helper()
+	if _, err := env.db.ExecContext(context.Background(),
+		"UPDATE import_jobs SET started_at = $1 WHERE id = $2", at, id); err != nil {
+		t.Fatalf("set job started_at: %v", err)
+	}
+}
+
+// finishImportJobCounters stores the counters, error and finish time the
+// worker records when a job ends, so tests can pin every listed column.
+func finishImportJobCounters(
+	t *testing.T,
+	env *handlerEnv,
+	id int64,
+	status string,
+	counters importJobCounters,
+	finishedAt time.Time,
+	failErr string,
+) {
+	t.Helper()
+	params := dbgen.FinishImportJobParams{
+		Status:                status,
+		TotalApps:             counters.total,
+		ProcessedApps:         counters.processed,
+		SkippedApps:           counters.skipped,
+		FailedApps:            counters.failed,
+		WishlistTotalApps:     counters.wishlistTotal,
+		WishlistProcessedApps: counters.wishlistProcessed,
+		WishlistSkippedApps:   counters.wishlistSkipped,
+		WishlistFailedApps:    counters.wishlistFailed,
+		FinishedAt:            sql.NullTime{Time: finishedAt, Valid: true},
+		ID:                    id,
+	}
+	if failErr != "" {
+		params.Error = sql.NullString{String: failErr, Valid: true}
+	}
+	if _, err := env.queries.FinishImportJob(context.Background(), params); err != nil {
+		t.Fatalf("finish job %d: %v", id, err)
+	}
+}
+
+func TestListImportJobsEmptyIsArray(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+
+	recorder := env.do(t, http.MethodGet, "/api/import-jobs", "")
+	requireStatus(t, recorder, http.StatusOK)
+	// An empty list serializes as [] so the browser never sees null.
+	if got := string(decodeRawJSON(t, recorder)["importJobs"]); got != "[]" {
+		t.Fatalf("importJobs = %s, want [] (%s)", got, recorder.Body.String())
+	}
+}
+
+func TestListImportJobsNewestFirst(t *testing.T) {
+	env := newHandlerEnv(t, defaultResolver())
+	now := time.Now()
+
+	seedSteamUser(t, env, 2201, "Alice")
+	seedSteamUser(t, env, 2202, "Bob")
+	seedSteamUser(t, env, 2203, "Carol")
+
+	// Oldest: a finished job carrying both owned and wishlist counters.
+	oldest := seedImportJob(t, env, 2201, importer.StatusSucceeded, now.Add(-3*time.Hour))
+	setImportJobStartedAt(t, env, oldest.ID, now.Add(-3*time.Hour))
+	finishImportJobCounters(t, env, oldest.ID, importer.StatusSucceeded, importJobCounters{
+		total: 3, processed: 2, skipped: 1,
+		wishlistTotal: 7, wishlistProcessed: 5, wishlistSkipped: 1, wishlistFailed: 1,
+	}, now.Add(-170*time.Minute), "")
+
+	// A queued job: untouched counters and null timestamps.
+	queued := seedImportJob(t, env, 2202, importer.StatusQueued, now.Add(-2*time.Hour))
+
+	// A running job for a user who already appears in the list.
+	running := seedImportJob(t, env, 2201, importer.StatusRunning, now.Add(-time.Hour))
+	setImportJobStartedAt(t, env, running.ID, now.Add(-time.Hour))
+
+	// Newest: a failed job carrying error text.
+	failed := seedImportJob(t, env, 2203, importer.StatusFailed, now.Add(-30*time.Minute))
+	setImportJobStartedAt(t, env, failed.ID, now.Add(-29*time.Minute))
+	finishImportJobCounters(t, env, failed.ID, importer.StatusFailed,
+		importJobCounters{total: 4, processed: 1, failed: 3},
+		now.Add(-28*time.Minute), "steam request failed")
+
+	recorder := env.do(t, http.MethodGet, "/api/import-jobs", "")
+	requireStatus(t, recorder, http.StatusOK)
+	body := decodeJSON[importJobsResponse](t, recorder)
+
+	wantIDs := []int64{failed.ID, running.ID, queued.ID, oldest.ID}
+	wantNames := []string{"Carol", "Alice", "Bob", "Alice"}
+	if len(body.ImportJobs) != len(wantIDs) {
+		t.Fatalf("%d jobs, want %d (%s)", len(body.ImportJobs), len(wantIDs), recorder.Body.String())
+	}
+	for index, job := range body.ImportJobs {
+		if job.ID != wantIDs[index] {
+			t.Errorf("position %d: id = %d, want %d", index, job.ID, wantIDs[index])
+		}
+		if job.SteamUserName != wantNames[index] {
+			t.Errorf("position %d: steamUserName = %q, want %q", index, job.SteamUserName, wantNames[index])
+		}
+	}
+
+	failedJob := body.ImportJobs[0]
+	if failedJob.Status != importer.StatusFailed || failedJob.Error == nil || *failedJob.Error != "steam request failed" {
+		t.Errorf("failed job = %+v, want the failed status with its error text", failedJob)
+	}
+	queuedJob := body.ImportJobs[2]
+	if queuedJob.StartedAt != nil || queuedJob.FinishedAt != nil || queuedJob.Error != nil {
+		t.Errorf("queued job = %+v, want null startedAt/finishedAt/error", queuedJob)
+	}
+
+	var raw struct {
+		ImportJobs []map[string]json.RawMessage `json:"importJobs"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw response: %v", err)
+	}
+	for _, key := range []string{
+		"totalApps", "processedApps", "skippedApps", "failedApps",
+		"wishlistTotalApps", "wishlistProcessedApps", "wishlistSkippedApps", "wishlistFailedApps",
+	} {
+		assertJSONNumber(t, raw.ImportJobs[2][key], 0)
+	}
+	for key, want := range map[string]int64{
+		"totalApps":             3,
+		"processedApps":         2,
+		"skippedApps":           1,
+		"failedApps":            0,
+		"wishlistTotalApps":     7,
+		"wishlistProcessedApps": 5,
+		"wishlistSkippedApps":   1,
+		"wishlistFailedApps":    1,
+	} {
+		assertJSONNumber(t, raw.ImportJobs[3][key], want)
+	}
+	assertJSONString(t, raw.ImportJobs[0]["error"], "steam request failed")
+	assertJSONString(t, raw.ImportJobs[1]["steamId"], "2201")
+}

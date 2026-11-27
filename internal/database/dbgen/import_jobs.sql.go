@@ -236,6 +236,88 @@ func (q *Queries) GetLatestSucceededImportJobForUser(ctx context.Context, steamI
 	return i, err
 }
 
+const listImportJobs = `-- name: ListImportJobs :many
+SELECT
+    import_jobs.id,
+    import_jobs.steam_id,
+    import_jobs.status,
+    import_jobs.total_apps,
+    import_jobs.processed_apps,
+    import_jobs.skipped_apps,
+    import_jobs.failed_apps,
+    import_jobs.wishlist_total_apps,
+    import_jobs.wishlist_processed_apps,
+    import_jobs.wishlist_skipped_apps,
+    import_jobs.wishlist_failed_apps,
+    import_jobs.error,
+    import_jobs.created_at,
+    import_jobs.started_at,
+    import_jobs.finished_at,
+    steam_users.name AS steam_user_name
+FROM import_jobs
+JOIN steam_users ON steam_users.steam_id = import_jobs.steam_id
+ORDER BY import_jobs.created_at DESC, import_jobs.id DESC
+`
+
+type ListImportJobsRow struct {
+	ID                    int64          `json:"id"`
+	SteamID               int64          `json:"steam_id"`
+	Status                string         `json:"status"`
+	TotalApps             int32          `json:"total_apps"`
+	ProcessedApps         int32          `json:"processed_apps"`
+	SkippedApps           int32          `json:"skipped_apps"`
+	FailedApps            int32          `json:"failed_apps"`
+	WishlistTotalApps     int32          `json:"wishlist_total_apps"`
+	WishlistProcessedApps int32          `json:"wishlist_processed_apps"`
+	WishlistSkippedApps   int32          `json:"wishlist_skipped_apps"`
+	WishlistFailedApps    int32          `json:"wishlist_failed_apps"`
+	Error                 sql.NullString `json:"error"`
+	CreatedAt             time.Time      `json:"created_at"`
+	StartedAt             sql.NullTime   `json:"started_at"`
+	FinishedAt            sql.NullTime   `json:"finished_at"`
+	SteamUserName         string         `json:"steam_user_name"`
+}
+
+func (q *Queries) ListImportJobs(ctx context.Context) ([]ListImportJobsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listImportJobs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListImportJobsRow
+	for rows.Next() {
+		var i ListImportJobsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SteamID,
+			&i.Status,
+			&i.TotalApps,
+			&i.ProcessedApps,
+			&i.SkippedApps,
+			&i.FailedApps,
+			&i.WishlistTotalApps,
+			&i.WishlistProcessedApps,
+			&i.WishlistSkippedApps,
+			&i.WishlistFailedApps,
+			&i.Error,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.SteamUserName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUnfinishedImportJobs = `-- name: ListUnfinishedImportJobs :many
 SELECT id, steam_id, status, total_apps, processed_apps, skipped_apps, failed_apps, wishlist_total_apps, wishlist_processed_apps, wishlist_skipped_apps, wishlist_failed_apps, error, created_at, started_at, finished_at FROM import_jobs
 WHERE status IN ('queued', 'running')

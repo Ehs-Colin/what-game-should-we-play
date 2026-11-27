@@ -80,3 +80,25 @@ RETURNING *;
 SELECT * FROM import_jobs
 WHERE status IN ('queued', 'running')
 ORDER BY created_at, id;
+
+-- name: ListImportJobs :many
+SELECT
+    import_jobs.id,
+    import_jobs.steam_id,
+    import_jobs.status,
+    import_jobs.total_apps,
+    import_jobs.processed_apps,
+    import_jobs.skipped_apps,
+    import_jobs.failed_apps,
+    import_jobs.wishlist_total_apps,
+    import_jobs.wishlist_processed_apps,
+    import_jobs.wishlist_skipped_apps,
+    import_jobs.wishlist_failed_apps,
+    import_jobs.error,
+    import_jobs.created_at,
+    import_jobs.started_at,
+    import_jobs.finished_at,
+    steam_users.name AS steam_user_name
+FROM import_jobs
+JOIN steam_users ON steam_users.steam_id = import_jobs.steam_id
+ORDER BY import_jobs.created_at DESC, import_jobs.id DESC;

@@ -83,7 +83,7 @@ Other notes:
 - Steam-backed requests can be slow; the server allows up to 300 seconds per
   response. Raise the proxy's read/send timeouts to match (nginx and Traefik
   default to 60 seconds).
-- `GET /health` is public and returns `200 {"ok":true,...}` — use it for
+- `GET /health` is public and returns `200 {"ok":true,...}`. Use it for
   proxy and container health checks.
 - The frontend uses relative URLs and polling (no WebSockets), so no rewrite
   or connection-upgrade rules are needed.

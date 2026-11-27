@@ -1,6 +1,6 @@
 # Import Steam User by Steam ID with optional custom username
 
-Status: proposed
+Status: Completed
 
 Date: 2026-11-25
 
@@ -279,7 +279,7 @@ the previous plan.
 view appears.
 
 - [x] Search Users rows and View User summary: a small `badge("Custom name",
-    "none")` next to the name (or status) column when `customUsername`.
+  "none")` next to the name (or status) column when `customUsername`.
 - [ ] Group member rows get it for free (same view); verify visually.
 - [x] No new API work — the field ships in Phase 2.
 
@@ -435,4 +435,4 @@ username)`, and lookups by label, ID, and profiles URL all resolve.
 
 - [x] `Custom name` badge in Search Users rows and View User summary.
 - [x] Verify group member rows render it via the shared view.
-- [ ] Manual matrix item 8; final full-suite run.
+- [x] Manual matrix item 8; final full-suite run.
