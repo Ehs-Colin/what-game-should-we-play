@@ -15,6 +15,9 @@ cmd/test/start.sh --nouser   # skip creating the first user
 cmd/test/stop.sh
 ```
 
+If an environment is already running, stop it first: `start.sh` exits without
+recreating the database or reseeding in that case.
+
 In OpenCode, the same commands are available as `/start-test-server` and
 `/stop-test-server`.
 

@@ -1,0 +1,150 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "model": "opencode/deepseek-v4.1-flash-free",
+    "providers": {
+        "opencode": {
+            "models": {
+                "deepseek-v4.1-flash-free": {},
+            },
+        },
+    },
+    "watcher": {
+        "ignore": ["logs/**"],
+    },
+    "mcp": {
+        "servers": {
+            "context7": {
+                "type": "remote",
+                "url": "https://mcp.context7.com/mcp",
+                "oauth": false,
+            },
+        },
+    },
+    "compaction": {
+        "auto": true,
+        "keep": {
+            "tokens": 10000,
+        },
+        "buffer": 20000,
+    },
+    "permissions": [
+        // Base: still ask for anything not explicitly allowed below.
+        {
+            "action": "shell",
+            "resource": "*",
+            "effect": "ask",
+        },
+        // Non-destructive project-local writes and code generation.
+        {
+            "action": "shell",
+            "resource": "mkdir *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "touch *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "cp *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "mv *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "gofmt -w *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "go fmt *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "go generate *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "sqlc generate *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "cat >> *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "tee *",
+            "effect": "allow",
+        },
+        // The seeded test environment is restarted freely: stop.sh then
+        // start.sh recreates its database. Both match with or without args.
+        {
+            "action": "shell",
+            "resource": "cmd/test/start.sh *",
+            "effect": "allow",
+        },
+        {
+            "action": "shell",
+            "resource": "cmd/test/stop.sh *",
+            "effect": "allow",
+        },
+        // Keep destructive or opaque commands behind a prompt.
+        {
+            "action": "shell",
+            "resource": "rm *",
+            "effect": "ask",
+        },
+        {
+            "action": "shell",
+            "resource": "rmdir *",
+            "effect": "ask",
+        },
+        {
+            "action": "shell",
+            "resource": "sed -i *",
+            "effect": "ask",
+        },
+        {
+            "action": "shell",
+            "resource": "psql *",
+            "effect": "ask",
+        },
+        {
+            "action": "shell",
+            "resource": "docker *",
+            "effect": "ask",
+        },
+        // Enforce the working-directory boundary for shell and file tools.
+        {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask",
+        },
+        // Keep the approved scratch directory frictionless.
+        {
+            "action": "external_directory",
+            "resource": "/tmp/opencode/*",
+            "effect": "allow",
+        },
+        // Keep the main worktree directory accessible.
+        {
+            "action": "external_directory",
+            "resource": "/home/colin/workspace/what-game-should-we-play/*",
+            "effect": "allow",
+        },
+        {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "deny",
+        },
+    ],
+}

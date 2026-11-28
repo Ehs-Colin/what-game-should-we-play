@@ -219,14 +219,69 @@
                             hidden
                         >
                             <p id="import-jobs-count" class="hint"></p>
-                            <label>
-                                Rows per page
-                                <select id="import-jobs-page-size">
-                                    <option value="10">10</option>
-                                    <option value="25">25</option>
-                                    <option value="50">50</option>
-                                </select>
-                            </label>
+                            <div class="app-toolbar__controls">
+                                <div
+                                    id="import-jobs-status-filter"
+                                    class="filter-dropdown"
+                                >
+                                    <button
+                                        id="import-jobs-status-toggle"
+                                        type="button"
+                                        class="filter-dropdown__toggle"
+                                        aria-expanded="false"
+                                        aria-controls="import-jobs-status-panel"
+                                    >
+                                        Status: Queued, Running, Failed
+                                    </button>
+                                    <div
+                                        id="import-jobs-status-panel"
+                                        class="filter-dropdown__panel"
+                                        role="group"
+                                        aria-label="Import job statuses"
+                                        hidden
+                                    >
+                                        <label>
+                                            <input
+                                                type="checkbox"
+                                                value="queued"
+                                                checked
+                                            />
+                                            Queued
+                                        </label>
+                                        <label>
+                                            <input
+                                                type="checkbox"
+                                                value="running"
+                                                checked
+                                            />
+                                            Running
+                                        </label>
+                                        <label>
+                                            <input
+                                                type="checkbox"
+                                                value="succeeded"
+                                            />
+                                            Succeeded
+                                        </label>
+                                        <label>
+                                            <input
+                                                type="checkbox"
+                                                value="failed"
+                                                checked
+                                            />
+                                            Failed
+                                        </label>
+                                    </div>
+                                </div>
+                                <label>
+                                    Rows per page
+                                    <select id="import-jobs-page-size">
+                                        <option value="10">10</option>
+                                        <option value="25">25</option>
+                                        <option value="50">50</option>
+                                    </select>
+                                </label>
+                            </div>
                         </div>
 
                         <div

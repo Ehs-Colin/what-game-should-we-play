@@ -769,6 +769,120 @@ select:disabled {
     font-weight: 600;
 }
 
+/* Toolbar controls that belong together, kept right of the count line. */
+.app-toolbar__controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: 0.75rem;
+}
+
+/* A button that opens a panel of options, such as the Admin Panel's status
+   filter. The wrapper anchors the panel below the button, and the button takes
+   the toolbar field look: the same inset box, 0.82rem weight-600 type, text
+   colour and arrow as the "Rows per page" select beside it. */
+.filter-dropdown {
+    position: relative;
+    max-width: 100%;
+}
+
+.filter-dropdown__toggle {
+    display: inline-flex;
+    position: relative;
+    align-items: center;
+    min-width: 0;
+    padding: 0.7rem 2rem 0.7rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: #101822;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+    color: var(--text);
+    font-size: 0.82rem;
+    /* A native select's own line box measures 1.27 times its font size; using
+       the same ratio keeps both toolbar fields exactly the same height. */
+    line-height: 1.27;
+    text-shadow: none;
+    /* The summary lists the ticked statuses and wraps on narrow screens: an
+       unbreakable nowrap label is wider than the toolbar and would widen the
+       page. The panel keeps its own width instead. */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+/* Native selects draw their own arrow; this is the same hint for the button,
+   in the field's own text colour. */
+.filter-dropdown__toggle::after {
+    position: absolute;
+    top: 50%;
+    right: 0.85rem;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    content: "";
+    transform: translateY(-65%) rotate(45deg);
+}
+
+/* Hover and the open state must not resurrect the base button's green fill:
+   this control reads as a field, so only its border reacts. The selector has
+   to out-specify button:hover:not(:disabled) to override it. */
+.filter-dropdown__toggle:hover:not(:disabled),
+.filter-dropdown__toggle[aria-expanded="true"] {
+    border-color: var(--border-strong);
+    background: #101822;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+    color: var(--text);
+    text-shadow: none;
+}
+
+.filter-dropdown__toggle:active:not(:disabled) {
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* The option list repeats the field look so the open filter still reads as one
+   control: same surface, border and corner radius. */
+.filter-dropdown__panel {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 10;
+    display: grid;
+    gap: 0.15rem;
+    /* A native popup is never narrower than its field, so option rows line up
+       with the control they belong to; 12rem keeps short labels usable. */
+    min-width: max(12rem, 100%);
+    max-width: 100vw;
+    padding: 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: #101822;
+    box-shadow: var(--shadow);
+}
+
+.filter-dropdown__panel label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.45rem;
+    border-radius: 3px;
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.filter-dropdown__panel label:hover {
+    background: var(--surface-hover);
+}
+
+.filter-dropdown__panel input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--accent);
+}
+
 .table-scroll {
     overflow-x: auto;
     border: 1px solid var(--border);

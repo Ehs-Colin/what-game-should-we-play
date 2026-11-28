@@ -122,6 +122,22 @@ const importJobsPagination = document.querySelector(
     "#import-jobs-pagination",
 );
 
+// Status filter dropdown inside the toolbar. The four boxes cover every value
+// import_jobs.status allows; the DOM holds the selection, so a reload returns
+// to the queued/running/failed default.
+const importJobsStatusFilter = document.querySelector(
+    "#import-jobs-status-filter",
+);
+const importJobsStatusToggle = document.querySelector(
+    "#import-jobs-status-toggle",
+);
+const importJobsStatusPanel = document.querySelector(
+    "#import-jobs-status-panel",
+);
+const importJobsStatusBoxes = [
+    ...importJobsStatusPanel.querySelectorAll('input[type="checkbox"]'),
+];
+
 const searchControls = document.querySelector("#search-controls");
 const searchSort = document.querySelector("#search-sort");
 const searchDirection = document.querySelector("#search-direction");
@@ -319,6 +335,8 @@ let importJobs = [];
 let importJobsPage = 1;
 let importJobsRowsPerPage = 10;
 const expandedImportJobs = new Set();
+// Every value import_jobs.status allows, in the order the filter lists them.
+const IMPORT_JOB_STATUSES = ["queued", "running", "succeeded", "failed"];
 
 let searchToken = 0;
 let searchController = null;
@@ -470,6 +488,35 @@ importJobsPageSize.addEventListener("change", () => {
     importJobsRowsPerPage = searchPageSizeFromValue(importJobsPageSize.value);
     importJobsPage = 1;
     renderImportJobs();
+});
+
+for (const box of importJobsStatusBoxes) {
+    box.addEventListener("change", () => {
+        importJobsPage = 1;
+        renderImportJobs();
+    });
+}
+
+importJobsStatusToggle.addEventListener("click", () => {
+    setImportJobsStatusFilterOpen(importJobsStatusPanel.hidden);
+});
+
+// An outside click closes the panel; a click on a box stays inside the wrapper,
+// so ticking several statuses in a row keeps it open.
+document.addEventListener("click", (event) => {
+    if (
+        !importJobsStatusPanel.hidden &&
+        !importJobsStatusFilter.contains(event.target)
+    ) {
+        setImportJobsStatusFilterOpen(false);
+    }
+});
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !importJobsStatusPanel.hidden) {
+        setImportJobsStatusFilterOpen(false);
+        importJobsStatusToggle.focus();
+    }
 });
 
 userForm.addEventListener("submit", (event) => {
@@ -5197,6 +5244,8 @@ function leaveDashboard() {
     stopDashboardRefresh();
     dashboardController?.abort();
     dashboardController = null;
+    // The filter keeps its ticks, but an open panel should not wait there.
+    setImportJobsStatusFilterOpen(false);
 }
 
 function onDashboardRoute() {
@@ -5337,32 +5386,88 @@ function showImportJobs(jobs) {
 }
 
 function renderImportJobs() {
+    updateImportJobsStatusLabel();
     if (importJobs.length === 0) {
         clearImportJobs();
         return;
     }
 
     importJobsPageSize.value = String(importJobsRowsPerPage);
-    const totalPages = totalPageCount(importJobs.length, importJobsRowsPerPage);
+    importJobsToolbar.hidden = false;
+    importJobsCount.hidden = false;
+
+    const visible = visibleImportJobs();
+    if (visible.length === 0) {
+        // The filter hid everything: keep the toolbar so it can be widened
+        // again, and drop the table and pagination with it.
+        importJobsResults.replaceChildren();
+        importJobsResultsPanel.hidden = true;
+        importJobsPagination.replaceChildren();
+        importJobsCount.textContent =
+            "No import jobs match the current filters.";
+        return;
+    }
+
+    const totalPages = totalPageCount(visible.length, importJobsRowsPerPage);
     importJobsPage = clampPage(importJobsPage, totalPages);
     const start = (importJobsPage - 1) * importJobsRowsPerPage;
-    const pageJobs = importJobs.slice(start, start + importJobsRowsPerPage);
+    const pageJobs = visible.slice(start, start + importJobsRowsPerPage);
 
     importJobsResults.replaceChildren(
         ...pageJobs.flatMap((job, index) => buildImportJobRows(job, index)),
     );
-    importJobsToolbar.hidden = false;
     importJobsResultsPanel.hidden = false;
-    importJobsCount.hidden = false;
+    const hiddenCount = importJobs.length - visible.length;
     importJobsCount.textContent = `Page ${importJobsPage} of ${totalPages} · ${formatCount(
-        importJobs.length,
-    )} ${importJobs.length === 1 ? "job" : "jobs"}`;
+        visible.length,
+    )} ${visible.length === 1 ? "job" : "jobs"}`;
+    if (hiddenCount > 0) {
+        importJobsCount.textContent += ` · ${formatCount(
+            hiddenCount,
+        )} hidden by filters`;
+    }
     renderPagination(
         importJobsPagination,
         importJobsPage,
         totalPages,
         goToImportJobsPage,
     );
+}
+
+// The statuses ticked in the filter dropdown.
+function selectedImportJobStatuses() {
+    return new Set(
+        importJobsStatusBoxes
+            .filter((box) => box.checked)
+            .map((box) => box.value),
+    );
+}
+
+function visibleImportJobs() {
+    const statuses = selectedImportJobStatuses();
+    return importJobs.filter((job) => statuses.has(job.status));
+}
+
+// Mirrors the ticked boxes into the toggle's label so the toolbar reports the
+// active filter without opening the panel.
+function updateImportJobsStatusLabel() {
+    const selected = selectedImportJobStatuses();
+    let summary;
+    if (selected.size === IMPORT_JOB_STATUSES.length) {
+        summary = "All statuses";
+    } else if (selected.size === 0) {
+        summary = "No statuses selected";
+    } else {
+        summary = IMPORT_JOB_STATUSES.filter((status) => selected.has(status))
+            .map((status) => importJobStatus(status).label)
+            .join(", ");
+    }
+    importJobsStatusToggle.textContent = `Status: ${summary}`;
+}
+
+function setImportJobsStatusFilterOpen(open) {
+    importJobsStatusPanel.hidden = !open;
+    importJobsStatusToggle.setAttribute("aria-expanded", String(open));
 }
 
 // The server already returns rows newest first; this keeps that order even if
@@ -5379,7 +5484,10 @@ function sortImportJobs(jobs) {
 }
 
 function goToImportJobsPage(page) {
-    const totalPages = totalPageCount(importJobs.length, importJobsRowsPerPage);
+    const totalPages = totalPageCount(
+        visibleImportJobs().length,
+        importJobsRowsPerPage,
+    );
     if (
         !Number.isInteger(page) ||
         page < 1 ||

@@ -1,6 +1,5 @@
 .env*
 .cmds*
-opencode.jsonc
-.opencode*
+
 data/*.log
 data/testenv/
